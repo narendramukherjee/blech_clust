@@ -55,12 +55,14 @@ def poisson_hmm(n_states, threshold, binned_spikes, seed, off_trials, edge_inert
 	'''
 	
 	# The model can only transition from the 'start' state to state 1, and from there to 2, and from there to 3 and so on
+	
 	for i in range(n_states):
 		if i == 0:
 			model.add_transition(model.start, states[i], 1.0)
 		else:
 			model.add_transition(model.start, states[i], 0.0)
 
+	
 	for i in range(n_states):
 		not_transitioning_prob = (0.999-0.95)*np.random.random() + 0.95
 		for j in range(n_states):
@@ -68,13 +70,15 @@ def poisson_hmm(n_states, threshold, binned_spikes, seed, off_trials, edge_inert
 				model.add_transition(states[i], states[j], not_transitioning_prob)
 			elif j - i == 1:
 				model.add_transition(states[i], states[j], 1.0 - not_transitioning_prob)
+			elif i == n_states - 1:
+				model.add_transition(states[i], states[0], 1.0 - not_transitioning_prob)
 			else:
 				model.add_transition(states[i], states[j], 0.0) 
 	# Bake the model
 	model.bake()
 
 	# Train the model only on the trials indicated by off_trials
-	model.fit(binned_spikes[off_trials, :, :], algorithm = 'baum-welch', max_iterations = 1000, edge_inertia = edge_inertia, distribution_inertia = dist_inertia, verbose = False)
+	model.fit(binned_spikes[off_trials, :, :], algorithm = 'baum-welch', stop_threshold = threshold, edge_inertia = edge_inertia, distribution_inertia = dist_inertia, verbose = False)
 	log_prob = [model.log_probability(binned_spikes[i, :, :]) for i in off_trials]
 	log_prob = np.sum(log_prob)
 
