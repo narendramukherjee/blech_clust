@@ -39,6 +39,7 @@ def poisson_hmm(n_states, threshold, binned_spikes, seed, off_trials, edge_inert
 		states.append(State(IndependentComponentsDistribution([PoissonDistribution(np.random.rand()) for unit in range(binned_spikes.shape[2])]), name = 'State%i' % (i+1)))
 		
 	model.add_states(states)
+	'''
 	# Add transitions from model.start to each state (equal probabilties)
 	for state in states:
 		model.add_transition(model.start, state, float(1.0/len(states)))
@@ -51,7 +52,24 @@ def poisson_hmm(n_states, threshold, binned_spikes, seed, off_trials, edge_inert
 				model.add_transition(states[i], states[j], not_transitioning_prob)
 			else:
 				model.add_transition(states[i], states[j], float((1.0 - not_transitioning_prob)/(n_states - 1)))
+	'''
 	
+	# The model can only transition from the 'start' state to state 1, and from there to 2, and from there to 3 and so on
+	for i in range(n_states):
+		if i == 0:
+			model.add_transition(model.start, states[i], 1.0)
+		else:
+			model.add_transition(model.start, states[i], 0.0)
+
+	for i in range(n_states):
+		not_transitioning_prob = (0.999-0.95)*np.random.random() + 0.95
+		for j in range(n_states):
+			if i - j == 0:
+				model.add_transition(states[i], states[j], not_transitioning_prob)
+			elif j - i == 1:
+				model.add_transition(states[i], states[j], 1.0 - not_transitioning_prob)
+			else:
+				model.add_transition(states[i], states[j], 0.0) 
 	# Bake the model
 	model.bake()
 
