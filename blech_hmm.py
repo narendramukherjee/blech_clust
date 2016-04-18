@@ -74,7 +74,7 @@ def poisson_hmm(n_states, threshold, binned_spikes, seed, off_trials, edge_inert
 	model.bake()
 
 	# Train the model only on the trials indicated by off_trials
-	model.fit(binned_spikes[off_trials, :, :], algorithm = 'baum-welch', stop_threshold = threshold, edge_inertia = edge_inertia, distribution_inertia = dist_inertia, verbose = False)
+	model.fit(binned_spikes[off_trials, :, :], algorithm = 'baum-welch', max_iterations = 1000, edge_inertia = edge_inertia, distribution_inertia = dist_inertia, verbose = False)
 	log_prob = [model.log_probability(binned_spikes[i, :, :]) for i in off_trials]
 	log_prob = np.sum(log_prob)
 
