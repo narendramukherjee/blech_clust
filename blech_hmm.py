@@ -2,6 +2,7 @@
 from pomegranate import *
 import numpy as np
 import multiprocessing as mp
+import math
 
 def poisson_hmm_implement(n_states, threshold, seeds, n_cpu, binned_spikes, off_trials, edge_inertia, dist_inertia):
 
@@ -10,10 +11,18 @@ def poisson_hmm_implement(n_states, threshold, seeds, n_cpu, binned_spikes, off_
 	results = [pool.apply_async(poisson_hmm, args = (n_states, threshold, binned_spikes, seed, off_trials, edge_inertia, dist_inertia,)) for seed in range(seeds)]
 	output = [p.get() for p in results]
 
+	# Clean up any threads that didn't converge - these will have nan for the log_prob
+	cleaned_output = []	
+	for i in range(len(output)):
+		if math.isnan(output[i][1]):
+			continue
+		else:
+			cleaned_output.append(output[i])
+
 	# Find the process that ended up with the highest log likelihood, and return it as the solution. If several processes ended up with the highest log likelihood, just pick the earliest one
-	log_probs = [output[i][1] for i in range(len(output))]
+	log_probs = [cleaned_output[i][1] for i in range(len(cleaned_output))]
 	maximum_pos = np.where(log_probs == np.max(log_probs))[0][0]
-	return output[maximum_pos]	
+	return cleaned_output[maximum_pos]	
 
 def multinomial_hmm_implement(n_states, threshold, seeds, n_cpu, binned_spikes, off_trials, edge_inertia, dist_inertia):
 
@@ -34,9 +43,9 @@ def poisson_hmm(n_states, threshold, binned_spikes, seed, off_trials, edge_inert
 	states = []
 	# Make a pomegranate independent components distribution object and represent every unit with a Poisson distribution - 1 for each state
 	for i in range(n_states):
-		#emission_slice = (int((float(i)/n_states)*spikes.shape[1]), int((float(i+1)/n_states)*spikes.shape[1]))
-		#initial_emissions = np.mean(spikes[off_trials, emission_slice[0]:emission_slice[1], :], axis = (0, 1))*(np.random.random())
-		states.append(State(IndependentComponentsDistribution([PoissonDistribution(np.random.rand()) for unit in range(binned_spikes.shape[2])]), name = 'State%i' % (i+1)))
+		emission_slice = (int((float(i)/n_states)*binned_spikes.shape[1]), int((float(i+1)/n_states)*binned_spikes.shape[1]))
+		initial_emissions = np.mean(binned_spikes[off_trials, emission_slice[0]:emission_slice[1], :], axis = (0, 1)) # *(np.random.random())
+		states.append(State(IndependentComponentsDistribution([PoissonDistribution(initial_emissions[unit]) for unit in range(binned_spikes.shape[2])]), name = 'State%i' % (i+1)))
 		
 	model.add_states(states)
 	'''
@@ -70,15 +79,15 @@ def poisson_hmm(n_states, threshold, binned_spikes, seed, off_trials, edge_inert
 				model.add_transition(states[i], states[j], not_transitioning_prob)
 			elif j - i == 1:
 				model.add_transition(states[i], states[j], 1.0 - not_transitioning_prob)
-			elif i == n_states - 1:
-				model.add_transition(states[i], states[0], 1.0 - not_transitioning_prob)
+			#elif i == n_states - 1:
+			#	model.add_transition(states[i], model.end, 1.0 - not_transitioning_prob)
 			else:
 				model.add_transition(states[i], states[j], 0.0) 
 	# Bake the model
 	model.bake()
 
 	# Train the model only on the trials indicated by off_trials
-	model.fit(binned_spikes[off_trials, :, :], algorithm = 'baum-welch', stop_threshold = threshold, edge_inertia = edge_inertia, distribution_inertia = dist_inertia, verbose = False)
+	model.fit(binned_spikes[off_trials, :, :], algorithm = 'baum-welch', max_iterations = 30, stop_threshold = threshold, edge_inertia = edge_inertia, distribution_inertia = dist_inertia, verbose = False)
 	log_prob = [model.log_probability(binned_spikes[i, :, :]) for i in off_trials]
 	log_prob = np.sum(log_prob)
 
