@@ -106,9 +106,11 @@ while True:
 	# If the user asked to split/re-cluster, ask them for the clustering parameters and perform clustering
 	split_predictions = []
 	chosen_split = 0
-	if re_cluster: 
+	if re_cluster: #I want to split this cluster
 		# Get clustering parameters from user
-		clustering_params = easygui.multenterbox(msg = 'Fill in the parameters for re-clustering (using a GMM)', fields = ['Number of clusters', 'Maximum number of iterations (1000 is more than enough)', 'Convergence criterion (usually 0.0001)', 'Number of random restarts for GMM (10 is more than enough)'])
+		clustering_params = easygui.multenterbox(msg = 'Fill in the parameters for re-clustering (using a GMM)', 
+                                           fields = ['Number of clusters', 'Maximum number of iterations (1000 is more than enough)', 
+                                                     'Convergence criterion (usually 0.0001)', 'Number of random restarts for GMM (10 is more than enough)'])
 		n_clusters = int(clustering_params[0])
 		n_iter = int(clustering_params[1])
 		thresh = float(clustering_params[2])
@@ -152,9 +154,14 @@ while True:
 		# Ask the user for the split clusters they want to choose
 		chosen_split = easygui.multchoicebox(msg = 'Which split cluster do you want to choose? Hit cancel to exit', choices = tuple([str(i) for i in range(n_clusters)]))
 		try:
-			chosen_split = int(chosen_split[0])
+			chosen_split = [int(chosen_split[i]) for i in range(len(chosen_split))]
+			split_merge = False
+#			if len(chosen_split) > 1:
+#				split_merge = easygui.multchoicebox(msg = 'I want to merge these splited-clusters into one unit (True = Yes, False = No)', choices = ('True', 'False'))
+#				split_merge = ast.literal_eval(split_merge[0])
 		except:
 			continue
+
 
 	# Get list of existing nodes/groups under /sorted_units
 	node_list = hf5.list_nodes('/sorted_units')
@@ -179,25 +186,135 @@ while True:
 
 	# If the user re-clustered/split clusters, add the chosen clusters in split_clusters
 	if re_cluster:
-		hf5.create_group('/sorted_units', unit_name)
-		unit_waveforms = spike_waveforms[np.where(predictions == int(clusters[0]))[0], :]	# Waveforms of originally chosen cluster
-		unit_waveforms = unit_waveforms[np.where(split_predictions == chosen_split)[0], :]	# Subsetting this set of waveforms to include only the chosen split
-		unit_times = spike_times[np.where(predictions == int(clusters[0]))[0]]			# Do the same thing for the spike times
-		unit_times = unit_times[np.where(split_predictions == chosen_split)[0]]
-		waveforms = hf5.create_array('/sorted_units/%s' % unit_name, 'waveforms', unit_waveforms)
-		times = hf5.create_array('/sorted_units/%s' % unit_name, 'times', unit_times)
-		unit_description['electrode_number'] = electrode_num
-		single_unit = easygui.multchoicebox(msg = 'I am almost-SURE that this is a beautiful single unit (True = Yes, False = No)', choices = ('True', 'False'))
-		unit_description['single_unit'] = int(ast.literal_eval(single_unit[0]))
-		# If the user says that this is a single unit, ask them whether its regular or fast spiking
-		unit_description['regular_spiking'] = 0
-		unit_description['fast_spiking'] = 0
-		if int(ast.literal_eval(single_unit[0])):
-			unit_type = easygui.multchoicebox(msg = 'What type of unit is this (Regular spiking = Pyramidal cells, Fast spiking = PV+ interneurons)?', choices = ('regular_spiking', 'fast_spiking'))
-			unit_description[unit_type[0]] = 1		
-		unit_description.append()
-		table.flush()
-		hf5.flush()
+#		split_merge = False
+		if len(chosen_split) == 1:
+			hf5.create_group('/sorted_units', unit_name)
+			unit_waveforms = spike_waveforms[np.where(predictions == int(clusters[0]))[0], :]	# Waveforms of originally chosen cluster
+			unit_waveforms = unit_waveforms[np.where(split_predictions == chosen_split[0])[0], :]	# Subsetting this set of waveforms to include only the chosen split
+			unit_times = spike_times[np.where(predictions == int(clusters[0]))[0]]			# Do the same thing for the spike times
+			unit_times = unit_times[np.where(split_predictions == chosen_split[0])[0]]
+			waveforms = hf5.create_array('/sorted_units/%s' % unit_name, 'waveforms', unit_waveforms)
+			times = hf5.create_array('/sorted_units/%s' % unit_name, 'times', unit_times)
+			unit_description['electrode_number'] = electrode_num
+			single_unit = easygui.multchoicebox(msg = 'I am almost-SURE that this is a beautiful single unit (True = Yes, False = No)', choices = ('True', 'False'))
+			unit_description['single_unit'] = int(ast.literal_eval(single_unit[0]))
+			# If the user says that this is a single unit, ask them whether its regular or fast spiking
+			unit_description['regular_spiking'] = 0
+			unit_description['fast_spiking'] = 0
+			if int(ast.literal_eval(single_unit[0])):
+				unit_type = easygui.multchoicebox(msg = 'What type of unit is this (Regular spiking = Pyramidal cells, Fast spiking = PV+ interneurons)?', choices = ('regular_spiking', 'fast_spiking'))
+				unit_description[unit_type[0]] = 1		
+			unit_description.append()
+			table.flush()
+			hf5.flush()
+
+		elif len(chosen_split) > 1:
+			split_merge = easygui.multchoicebox(msg = 'I want to merge these splited-clusters into one unit (True = Yes, False = No)', choices = ('True', 'False'))
+			split_merge = ast.literal_eval(split_merge[0])
+            
+			if split_merge: #I want to merge these splited-clusters
+				unit_waveforms = []
+				unit_times = []
+				cluster_unit_waveforms = spike_waveforms[np.where(predictions == int(clusters[0]))[0], :]
+				cluster_unit_times = spike_times[np.where(predictions == int(clusters[0]))[0]]
+				for split_cluster in chosen_split:
+					if unit_waveforms == []:
+						unit_waveforms = cluster_unit_waveforms[np.where(split_predictions == split_cluster)[0], :]
+						unit_times = cluster_unit_times[np.where(split_predictions == split_cluster)[0]]
+					else:
+						unit_waveforms = np.concatenate((unit_waveforms, cluster_unit_waveforms[np.where(split_predictions == split_cluster)[0], :]))
+						unit_times = np.concatenate((unit_times, cluster_unit_times[np.where(split_predictions == split_cluster)[0]]))
+
+			# Show the merged cluster to the user, and ask if they still want to merge
+				x = np.arange(len(unit_waveforms[0])/10) + 1
+				fig, ax = blech_waveforms_datashader.waveforms_datashader(unit_waveforms, x)
+				# plt.plot(x - 15, unit_waveforms[:, ::10].T, linewidth = 0.01, color = 'red')
+				ax.set_xlabel('Sample (30 samples per ms)')
+				ax.set_ylabel('Voltage (microvolts)')
+				ax.set_title('Merged cluster, No. of waveforms={:d}'.format(unit_waveforms.shape[0]))
+				plt.show()
+ 
+			# Warn the user about the frequency of ISI violations in the merged unit
+				ISIs = np.ediff1d(np.sort(unit_times))/30.0
+				violations1 = 100.0*float(np.sum(ISIs < 1.0)/len(unit_times))
+				violations2 = 100.0*float(np.sum(ISIs < 2.0)/len(unit_times))
+				proceed = easygui.multchoicebox(msg = 'My merged cluster has %.1f percent (<2ms) and %.1f percent (<1ms) ISI violations out of %i total waveforms. I want to still merge these clusters into one unit (True = Yes, False = No)' % (violations2, violations1, len(unit_times)), choices = ('True', 'False'))
+				proceed = ast.literal_eval(proceed[0])
+
+				# Create unit if the user agrees to proceed, else include each split_cluster as a separate unit 
+				if proceed:	
+					hf5.create_group('/sorted_units', unit_name)
+					waveforms = hf5.create_array('/sorted_units/%s' % unit_name, 'waveforms', unit_waveforms)
+					times = hf5.create_array('/sorted_units/%s' % unit_name, 'times', unit_times)
+					unit_description['electrode_number'] = electrode_num
+					single_unit = easygui.multchoicebox(msg = 'I am almost-SURE that this is a beautiful single unit (True = Yes, False = No)', choices = ('True', 'False'))
+					unit_description['single_unit'] = int(ast.literal_eval(single_unit[0]))
+					# If the user says that this is a single unit, ask them whether its regular or fast spiking
+					unit_description['regular_spiking'] = 0
+					unit_description['fast_spiking'] = 0
+					if int(ast.literal_eval(single_unit[0])):
+						unit_type = easygui.multchoicebox(msg = 'What type of unit is this (Regular spiking = Pyramidal cells, Fast spiking = PV+ interneurons)?', choices = ('regular_spiking', 'fast_spiking'))
+						unit_description[unit_type[0]] = 1
+					unit_description.append()
+					table.flush()
+					hf5.flush()
+############
+			else: # if not merge, then include each split_cluster as a separate unit
+				for split_cluster in chosen_split:
+					hf5.create_group('/sorted_units', unit_name)
+					unit_waveforms = spike_waveforms[np.where(predictions == int(clusters[0]))[0], :]	# Waveforms of originally chosen cluster
+					unit_waveforms = unit_waveforms[np.where(split_predictions == chosen_split)[0], :]	# Subsetting this set of waveforms to include only the chosen split
+					unit_times = spike_times[np.where(predictions == int(clusters[0]))[0]]			# Do the same thing for the spike times
+					unit_times = unit_times[np.where(split_predictions == chosen_split)[0]]
+					waveforms = hf5.create_array('/sorted_units/%s' % unit_name, 'waveforms', unit_waveforms)
+					times = hf5.create_array('/sorted_units/%s' % unit_name, 'times', unit_times)
+					unit_description['electrode_number'] = electrode_num
+					single_unit = easygui.multchoicebox(msg = 'I am almost-SURE that electrode: %i cluster: %i split: %i is a beautiful single unit (True = Yes, False = No)' % (electrode_num, int(cluster), int(split_cluster)), choices = ('True', 'False'))
+					unit_description['single_unit'] = int(ast.literal_eval(single_unit[0]))
+					# If the user says that this is a single unit, ask them whether its regular or fast spiking
+					unit_description['regular_spiking'] = 0
+					unit_description['fast_spiking'] = 0
+					if int(ast.literal_eval(single_unit[0])):
+						unit_type = easygui.multchoicebox(msg = 'What type of unit is this (Regular spiking = Pyramidal cells, Fast spiking = PV+ interneurons)?', choices = ('regular_spiking', 'fast_spiking'))
+						unit_description[unit_type[0]] = 1
+					unit_description.append()
+					table.flush()
+					hf5.flush()				
+
+					# Finally increment max_unit and create a new unit name
+					max_unit += 1
+					unit_name = 'unit%03d' % int(max_unit + 1)
+
+					# Get a new unit_descriptor table row for this new unit
+					unit_description = table.row
+					#continue
+###########                
+		else:
+			continue
+# =============================================================================
+# 
+# 		else:#if not split_merge:
+# 			hf5.create_group('/sorted_units', unit_name)
+# 			unit_waveforms = spike_waveforms[np.where(predictions == int(clusters[0]))[0], :]	# Waveforms of originally chosen cluster
+# 			unit_waveforms = unit_waveforms[np.where(split_predictions == chosen_split[0])[0], :]	# Subsetting this set of waveforms to include only the chosen split
+# 			unit_times = spike_times[np.where(predictions == int(clusters[0]))[0]]			# Do the same thing for the spike times
+# 			unit_times = unit_times[np.where(split_predictions == chosen_split[0])[0]]
+# 			waveforms = hf5.create_array('/sorted_units/%s' % unit_name, 'waveforms', unit_waveforms)
+# 			times = hf5.create_array('/sorted_units/%s' % unit_name, 'times', unit_times)
+# 			unit_description['electrode_number'] = electrode_num
+# 			single_unit = easygui.multchoicebox(msg = 'I am almost-SURE that this is a beautiful single unit (True = Yes, False = No)', choices = ('True', 'False'))
+# 			unit_description['single_unit'] = int(ast.literal_eval(single_unit[0]))
+# 			# If the user says that this is a single unit, ask them whether its regular or fast spiking
+# 			unit_description['regular_spiking'] = 0
+# 			unit_description['fast_spiking'] = 0
+# 			if int(ast.literal_eval(single_unit[0])):
+# 				unit_type = easygui.multchoicebox(msg = 'What type of unit is this (Regular spiking = Pyramidal cells, Fast spiking = PV+ interneurons)?', choices = ('regular_spiking', 'fast_spiking'))
+# 				unit_description[unit_type[0]] = 1		
+# 			unit_description.append()
+# 			table.flush()
+# 			hf5.flush()
+# 
+# =============================================================================
 		
 
 	# If only 1 cluster was chosen (and it wasn't split), add that as a new unit in /sorted_units. Ask if the isolated unit is an almost-SURE single unit
@@ -219,6 +336,7 @@ while True:
 		unit_description.append()
 		table.flush()
 		hf5.flush()
+
 
 	else:
 		# If the chosen units are going to be merged, merge them
