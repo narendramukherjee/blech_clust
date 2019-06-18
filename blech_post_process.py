@@ -70,6 +70,27 @@ except:
 
 # Run an infinite loop as long as the user wants to pick clusters from the electrodes	
 while True:
+	# Get list of existing nodes/groups under /sorted_units
+	node_list = hf5.list_nodes('/sorted_units')
+
+	# If node_list is empty, start naming units from 000
+	unit_name = ''
+	max_unit = 0
+	if node_list == []:		
+		unit_name = 'unit%03d' % 0
+	# Else name the new unit by incrementing the last unit by 1 
+	else:
+		unit_numbers = []
+		for node in node_list:
+			unit_numbers.append(node._v_pathname.split('/')[-1][-3:])
+			unit_numbers[-1] = int(unit_numbers[-1])
+		unit_numbers = np.array(unit_numbers)
+		max_unit = np.max(unit_numbers)
+		unit_name = 'unit%03d' % int(max_unit + 1)
+
+	# Get a new unit_descriptor table row for this new unit
+	unit_description = table.row
+	
 	# Get electrode number from user
 	electrode_num = easygui.multenterbox(msg = 'Which electrode do you want to choose? Hit cancel to exit', fields = ['Electrode #'])
 	# Break if wrong input/cancel command was given
@@ -152,41 +173,15 @@ while True:
 
 		plt.show()
 		# Ask the user for the split clusters they want to choose
-		chosen_split = easygui.multchoicebox(msg = 'Which split cluster do you want to choose? Hit cancel to exit', choices = tuple([str(i) for i in range(n_clusters)]))
+		chosen_split = easygui.multchoicebox(msg = 'Which split clusters do you want to choose? Hit cancel to exit', choices = tuple([str(i) for i in range(n_clusters)]))
 		try:
 			chosen_split = [int(chosen_split[i]) for i in range(len(chosen_split))]
 			split_merge = False
-#			if len(chosen_split) > 1:
-#				split_merge = easygui.multchoicebox(msg = 'I want to merge these splited-clusters into one unit (True = Yes, False = No)', choices = ('True', 'False'))
-#				split_merge = ast.literal_eval(split_merge[0])
 		except:
 			continue
 
 
-	# Get list of existing nodes/groups under /sorted_units
-	node_list = hf5.list_nodes('/sorted_units')
-
-	# If node_list is empty, start naming units from 000
-	unit_name = ''
-	max_unit = 0
-	if node_list == []:		
-		unit_name = 'unit%03d' % 0
-	# Else name the new unit by incrementing the last unit by 1 
-	else:
-		unit_numbers = []
-		for node in node_list:
-			unit_numbers.append(node._v_pathname.split('/')[-1][-3:])
-			unit_numbers[-1] = int(unit_numbers[-1])
-		unit_numbers = np.array(unit_numbers)
-		max_unit = np.max(unit_numbers)
-		unit_name = 'unit%03d' % int(max_unit + 1)
-
-	# Get a new unit_descriptor table row for this new unit
-	unit_description = table.row	
-
 	# If the user re-clustered/split clusters, add the chosen clusters in split_clusters
-	if re_cluster:
-#		split_merge = False
 		if len(chosen_split) == 1:
 			hf5.create_group('/sorted_units', unit_name)
 			unit_waveforms = spike_waveforms[np.where(predictions == int(clusters[0]))[0], :]	# Waveforms of originally chosen cluster
@@ -263,9 +258,9 @@ while True:
 				for split_cluster in chosen_split:
 					hf5.create_group('/sorted_units', unit_name)
 					unit_waveforms = spike_waveforms[np.where(predictions == int(clusters[0]))[0], :]	# Waveforms of originally chosen cluster
-					unit_waveforms = unit_waveforms[np.where(split_predictions == chosen_split)[0], :]	# Subsetting this set of waveforms to include only the chosen split
+					unit_waveforms = unit_waveforms[np.where(split_predictions == split_cluster)[0], :]	# Subsetting this set of waveforms to include only the chosen split
 					unit_times = spike_times[np.where(predictions == int(clusters[0]))[0]]			# Do the same thing for the spike times
-					unit_times = unit_times[np.where(split_predictions == chosen_split)[0]]
+					unit_times = unit_times[np.where(split_predictions == split_cluster)[0]]
 					waveforms = hf5.create_array('/sorted_units/%s' % unit_name, 'waveforms', unit_waveforms)
 					times = hf5.create_array('/sorted_units/%s' % unit_name, 'times', unit_times)
 					unit_description['electrode_number'] = electrode_num
@@ -291,31 +286,6 @@ while True:
 ###########                
 		else:
 			continue
-# =============================================================================
-# 
-# 		else:#if not split_merge:
-# 			hf5.create_group('/sorted_units', unit_name)
-# 			unit_waveforms = spike_waveforms[np.where(predictions == int(clusters[0]))[0], :]	# Waveforms of originally chosen cluster
-# 			unit_waveforms = unit_waveforms[np.where(split_predictions == chosen_split[0])[0], :]	# Subsetting this set of waveforms to include only the chosen split
-# 			unit_times = spike_times[np.where(predictions == int(clusters[0]))[0]]			# Do the same thing for the spike times
-# 			unit_times = unit_times[np.where(split_predictions == chosen_split[0])[0]]
-# 			waveforms = hf5.create_array('/sorted_units/%s' % unit_name, 'waveforms', unit_waveforms)
-# 			times = hf5.create_array('/sorted_units/%s' % unit_name, 'times', unit_times)
-# 			unit_description['electrode_number'] = electrode_num
-# 			single_unit = easygui.multchoicebox(msg = 'I am almost-SURE that this is a beautiful single unit (True = Yes, False = No)', choices = ('True', 'False'))
-# 			unit_description['single_unit'] = int(ast.literal_eval(single_unit[0]))
-# 			# If the user says that this is a single unit, ask them whether its regular or fast spiking
-# 			unit_description['regular_spiking'] = 0
-# 			unit_description['fast_spiking'] = 0
-# 			if int(ast.literal_eval(single_unit[0])):
-# 				unit_type = easygui.multchoicebox(msg = 'What type of unit is this (Regular spiking = Pyramidal cells, Fast spiking = PV+ interneurons)?', choices = ('regular_spiking', 'fast_spiking'))
-# 				unit_description[unit_type[0]] = 1		
-# 			unit_description.append()
-# 			table.flush()
-# 			hf5.flush()
-# 
-# =============================================================================
-		
 
 	# If only 1 cluster was chosen (and it wasn't split), add that as a new unit in /sorted_units. Ask if the isolated unit is an almost-SURE single unit
 	elif len(clusters) == 1:
