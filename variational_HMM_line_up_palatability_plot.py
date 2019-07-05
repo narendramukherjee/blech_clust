@@ -6,7 +6,7 @@ import tables
 import easygui
 import sys
 import os
-import pylab as plt
+#import pylab as plt
 from scipy.stats import rankdata
 from scipy.stats import spearmanr
 from scipy.stats import pearsonr
@@ -56,6 +56,11 @@ r_spearman_laser_off = []
 p_spearman_laser_off = []
 r_spearman_laser_on = []
 p_spearman_laser_on = []
+
+# Empty lists for switch times for all tastes
+switchtimes_laser_off = [[] for i in range(num_tastes)]
+switchtimes_laser_on = [[] for i in range(num_tastes)]
+
 for dir_name in dirs:
 	os.chdir(dir_name)
 	# Locate the hdf5 file
@@ -130,18 +135,23 @@ for dir_name in dirs:
 		# Run through the laser off trials
 		for trial in range(len(laser_off_trials)):
 			# Find the time that the dominant state first comes on
-			state_onset = np.where(posterior_proba_laser_on[laser_on_pal_state, trial, :] > 0.5)[0]
+			state_onset = np.where(posterior_proba_laser_off[laser_off_pal_state, trial, :] > 0.5)[0]
 			later_onset = np.where(np.ediff1d(state_onset) > 1)[0]
 			# If the dominant state does go over 0.8 in probability during the trial, pick its onset
 			if len(state_onset) > 0:
 				if state_onset[0]*bin_size > 100:
 					state_onset = state_onset[0]
 				elif len(later_onset) > 0:
-					state_onset = later_onset[0]
+					if state_onset[later_onset[0]+1]*bin_size > 100:
+						state_onset = state_onset[later_onset[0]+1]
+					else:
+						continue
 				else:
 					continue
 				print(state_onset)
-				# Append spiking data for a total of 2.5s - 1s before to 1.5s after the state onset
+				# Append switch time of this trial to the array
+				switchtimes_laser_off[dig_in.index(taste)].append(state_onset*bin_size)
+				# Append spiking data for a total of 3.5s - 1s before to 2.5s after the state onset
 				this_taste_laser_off_aligned.append(taste.spike_array[laser_off_trials[trial], single_units, pre_stim + state_onset*bin_size + pre_stim_hmm - 1000:pre_stim + state_onset*bin_size + pre_stim_hmm + 2500])
 				# Append an equal 2.5s worth of unaligned spiking data
 				this_taste_laser_off_unaligned.append(taste.spike_array[laser_off_trials[trial], single_units, pre_stim - 1000:pre_stim + 2500])
@@ -157,10 +167,15 @@ for dir_name in dirs:
 				if state_onset[0]*bin_size > 100:
 					state_onset = state_onset[0]
 				elif len(later_onset) > 0:
-					state_onset = later_onset[0]
+					if state_onset[later_onset[0]+1]*bin_size > 100:
+						state_onset = state_onset[later_onset[0]+1]
+					else:
+						continue
 				else:
 					continue
 				print(state_onset)
+				# Append switch time of this trial to the array
+				switchtimes_laser_on[dig_in.index(taste)].append(state_onset*bin_size)
 				# Append spiking data for a total of 2.5s - 1s before to 1.5s after the state onset
 				this_taste_laser_on_aligned.append(taste.spike_array[laser_on_trials[trial], single_units, pre_stim + state_onset*bin_size + pre_stim_hmm - 1000:pre_stim + state_onset*bin_size + pre_stim_hmm + 2500])
 				# Append an equal 2.5s worth of unaligned spiking data
@@ -206,20 +221,39 @@ for dir_name in dirs:
 		for time in range(response_laser_off_aligned.shape[0]):
 			ranks = rankdata(response_laser_off_aligned[time, :, unit])
 			r, p = spearmanr(ranks, palatability_laser_off)
-			this_unit_r_laser_off[0].append(r)	
-			this_unit_p_laser_off[0].append(p)	
+			if np.isnan(r):
+				this_unit_r_laser_off[0].append(0.0)
+				this_unit_p_laser_off[0].append(1.0)
+			else:
+				this_unit_r_laser_off[0].append(r)	
+				this_unit_p_laser_off[0].append(p)
+				
 			ranks = rankdata(response_laser_off_unaligned[time, :, unit])
 			r, p = spearmanr(ranks, palatability_laser_off)
-			this_unit_r_laser_off[1].append(r)	
-			this_unit_p_laser_off[1].append(p)	
+			if np.isnan(r):
+				this_unit_r_laser_off[1].append(0.0)
+				this_unit_p_laser_off[1].append(1.0)
+			else:
+				this_unit_r_laser_off[1].append(r)	
+				this_unit_p_laser_off[1].append(p)
+
 			ranks = rankdata(response_laser_on_aligned[time, :, unit])
 			r, p = spearmanr(ranks, palatability_laser_on)
-			this_unit_r_laser_on[0].append(r)	
-			this_unit_p_laser_on[0].append(p)	
+			if np.isnan(r):
+				this_unit_r_laser_on[0].append(0.0)
+				this_unit_p_laser_on[0].append(1.0)
+			else:
+				this_unit_r_laser_on[0].append(r)	
+				this_unit_p_laser_on[0].append(p)
+
 			ranks = rankdata(response_laser_on_unaligned[time, :, unit])
 			r, p = spearmanr(ranks, palatability_laser_on)
-			this_unit_r_laser_on[1].append(r)	
-			this_unit_p_laser_on[1].append(p)
+			if np.isnan(r):
+				this_unit_r_laser_on[1].append(0.0)
+				this_unit_p_laser_on[1].append(1.0)
+			else:
+				this_unit_r_laser_on[1].append(r)	
+				this_unit_p_laser_on[1].append(p)
 
 		# Append the unit specific lists to the main lists of r and p
 		r_spearman_laser_off.append(this_unit_r_laser_off)
@@ -229,8 +263,100 @@ for dir_name in dirs:
 
 	# Close the hdf5 file
 	hf5.close()
+###
+#r_spearman_laser_off[np.isnan(r_spearman_laser_off)] = 0
+#r_spearman_laser_on[np.isnan(r_spearman_laser_on)] = 0
 
 r_spearman_laser_off = np.array(r_spearman_laser_off)
 p_spearman_laser_off = np.array(p_spearman_laser_off)
 r_spearman_laser_on = np.array(r_spearman_laser_on)
-p_spearman_laser_on = np.array(p_spearman_laser_on)		
+p_spearman_laser_on = np.array(p_spearman_laser_on)
+
+##########
+# Ask the user for the directory to save arrays and plots
+print('$$$$Choose the output directory for restuls of HMM alignment coorelation analysis$$$$')
+dir_name = easygui.diropenbox(msg = 'Choose the output directory for saving correlation results')
+os.chdir(dir_name)
+##########
+
+# Saving arrays
+np.save('r_spearman_laser_off.npy', r_spearman_laser_off)
+np.save('p_spearman_laser_off.npy', p_spearman_laser_off)
+np.save('r_spearman_laser_on.npy', r_spearman_laser_on)
+np.save('p_spearman_laser_on.npy', p_spearman_laser_on)
+
+# Plot results
+import matplotlib.pyplot as plt
+from scipy.ndimage.filters import gaussian_filter1d
+import seaborn as sns
+sns.set()
+
+x_axis = np.arange(0, laser_on_aligned.shape[-1]-params[0]+params[1], params[1]) - 1000
+shift_time=750 # the time shift to match aligned and unaligned palatability curve
+aligned_plot_times = np.where((x_axis >= x_axis[0])*(x_axis <= 1500))[0]
+unaligned_plot_times = np.where((x_axis >= x_axis[0] + shift_time)*(x_axis <= 1500 + shift_time))[0]
+plot_times = [aligned_plot_times, unaligned_plot_times]
+#x_s, x_e = int(np.where(x_axis == -1000)[0]), int(np.where(x_axis == 1500)[0])
+labels = ['aligned', 'unaligned']
+colors = ['r', 'k']
+
+# Plot laser off trials
+fig, ax = plt.subplots()
+for i in range(2):
+	r_squared = r_spearman_laser_off[:, i, :] ** 2
+	ax.plot(np.mean(r_squared[:, plot_times[i]], axis = 0), 
+			color = colors[i], label = labels[i])
+ax.legend(loc = 'best', facecolor = 'grey')
+ax.set_facecolor('lightgrey')
+ax.set(
+	xlabel = f'Time from transitions or {shift_time}ms after taste delivery',
+	xticks = [0, 20, 40, 60, 80, 100],
+	xticklabels = [-1000, -500, 0, 500, 1000, 1500],
+	ylabel = 'Average Spearman $rho^2$', 
+	title = 'Laser OFF Trials')
+plt.savefig('Spearman_laser_OFF.png', bbox_inches="tight", facecolor=fig.get_facecolor(), edgecolor='none')
+plt.close('all')
+
+# Plot laser on trials
+fig, ax = plt.subplots()
+for i in range(2):
+	r_squared = r_spearman_laser_on[:, i, :] ** 2
+	ax.plot(np.mean(r_squared[:, plot_times[i]], axis = 0), 
+			color = colors[i], label = labels[i])
+ax.legend(loc = 'best', facecolor = 'grey')
+ax.set_facecolor('lightgrey')
+ax.set(
+	xlabel = f'Time from transitions or {shift_time}ms after taste delivery',
+	xticks = [0, 20, 40, 60, 80, 100],
+	xticklabels = [-1000, -500, 0, 500, 1000, 1500],
+	ylabel = 'Average Spearman $rho^2$', 
+	title = 'Laser ON Trials')
+plt.savefig('Spearman_laser_ON.png', bbox_inches="tight", facecolor=fig.get_facecolor(), edgecolor='none')
+plt.close('all')
+
+# Plot switch times for each taste
+# Laser Off trials
+fig, ax = plt.subplots()
+means = [np.mean(switchtimes_laser_off[taste]) for taste in range(num_tastes)]
+errors = [np.std(switchtimes_laser_off[taste])/np.sqrt(len(switchtimes_laser_off[taste]))\
+	 for taste in range(num_tastes)]
+ax.barh(np.arange(4) + 0.5, means, xerr = errors, color = 'grey', height=0.5)
+ax.set_yticks(np.arange(4) + 0.5)
+ax.set_yticklabels(["NaCl", "Sucrose", "Citric Acid", "QHCl"], rotation=40)
+ax.set_xlabel("Time from Taste Delivery (ms)")
+ax.set_xticks([0, 250, 500, 750, 1000, 1250])#, [0.0, 0.5, 1.0])
+plt.savefig('Switchtimes_laser_OFF.png', bbox_inches="tight", facecolor=fig.get_facecolor(), edgecolor='none')
+plt.close('all')
+
+# Laser On Trials
+fig, ax = plt.subplots()
+means = [np.mean(switchtimes_laser_on[taste]) for taste in range(num_tastes)]
+errors = [np.std(switchtimes_laser_on[taste])/np.sqrt(len(switchtimes_laser_on[taste]))\
+	 for taste in range(num_tastes)]
+ax.barh(np.arange(4) + 0.5, means, xerr = errors, color = 'grey', height=0.5)
+ax.set_yticks(np.arange(4) + 0.5)
+ax.set_yticklabels(["NaCl", "Sucrose", "Citric Acid", "QHCl"], rotation=40)
+ax.set_xlabel("Time from Taste Delivery (ms)")
+ax.set_xticks([0, 250, 500, 750, 1000, 1250])#, [0.0, 0.5, 1.0])
+plt.savefig('Switchtimes_laser_ON.png', bbox_inches="tight", facecolor=fig.get_facecolor(), edgecolor='none')
+plt.close('all')
