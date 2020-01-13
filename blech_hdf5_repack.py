@@ -17,7 +17,7 @@ for files in file_list:
 os.system("ptrepack --chunkshape=auto --propindexes --complevel=9 --complib=blosc " + hdf5_name + " " +  "tmp.h5")
 
 # Delete the old hdf5 file
-os.system("rm " + hdf5_name)
+os.remove(hdf5_name)
 
 # And rename the new file with the same old name
-os.system("mv tmp.h5 " + hdf5_name)
+os.rename("tmp.h5", hdf5_name)

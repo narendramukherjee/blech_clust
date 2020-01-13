@@ -21,13 +21,19 @@ pre_stim = int(pre_stim[0])
 m, n = butter(2, 2.0*300.0/1000.0, 'highpass')
 c, d = butter(2, 2.0*15.0/1000.0, 'lowpass')
 
+# check how many EMG channels used in this experiment
+check = easygui.ynbox(msg = 'Did you have more than one EMG channel?', title = 'Check YES if you did')
+
 # Bandpass filter the emg signals, and store them in a numpy array. Low pass filter the bandpassed signals, and store them in another array
 emg_filt = np.zeros(emg_data.shape[1:])
 env = np.zeros(emg_data.shape[1:])
 for i in range(emg_data.shape[1]):
 	for j in range(emg_data.shape[2]):
-		emg_filt[i, j, :] = filtfilt(m, n, emg_data[0, i, j, :] - emg_data[1, i, j, :])
-		env[i, j, :] = filtfilt(c, d, np.abs(emg_filt[i, j, :]))
+		if check:
+			emg_filt[i, j, :] = filtfilt(m, n, emg_data[0, i, j, :] - emg_data[1, i, j, :])
+		else:
+			emg_filt[i, j, :] = filtfilt(m, n, emg_data[0, i, j, :])
+		env[i, j, :] = filtfilt(c, d, np.abs(emg_filt[i, j, :]))    
 			
 # Get mean and std of baseline emg activity, and use it to select trials that have significant post stimulus activity
 sig_trials = np.zeros((emg_data.shape[1], emg_data.shape[2]))

@@ -6,6 +6,7 @@ import sys
 import os
 import ast
 import matplotlib
+import shutil
 matplotlib.use('Agg')
 import pylab as plt
 #matplotlib.rcParams.update({'figure.autolayout': True})
@@ -43,17 +44,18 @@ for i in range(len(params)):
 
 # Make directory to store the PSTH plots. Delete and remake the directory if it exists
 try:
-	os.system('rm -r '+'./PSTH')
+    shutil.rmtree("PSTH")
+
 except:
 	pass
-os.mkdir('./PSTH')
+os.mkdir("PSTH")
 
 # Make directory to store the raster plots. Delete and remake the directory if it exists
 try:
-	os.system('rm -r '+'./raster')
+    shutil.rmtree("raster")
 except:
 	pass
-os.mkdir('./raster')
+os.mkdir("raster")
 
 # Get the list of spike trains by digital input channels
 trains_dig_in = hf5.list_nodes('/spike_trains')
@@ -64,8 +66,8 @@ r_post_stim = 2500
 
 # Plot PSTHs and rasters by digital input channels
 for dig_in in trains_dig_in:
-	os.mkdir('./PSTH/'+str.split(dig_in._v_pathname, '/')[-1])
-	os.mkdir('./raster/'+str.split(dig_in._v_pathname, '/')[-1])
+	os.mkdir("./PSTH/" + str.split(dig_in._v_pathname, '/')[-1])
+	os.mkdir("./raster/" + str.split(dig_in._v_pathname, '/')[-1])
 	trial_avg_spike_array = np.mean(dig_in.spike_array[:], axis = 0)
 	for unit in range(trial_avg_spike_array.shape[0]):
 		time = []
