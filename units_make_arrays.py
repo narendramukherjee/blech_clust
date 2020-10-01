@@ -98,24 +98,24 @@ for unit in units:
 # Go through the dig_in_channel_nums and make an array of spike trains of dimensions (# trials x # units x trial duration (ms)) - use end of digital input pulse as the time of taste delivery
 for i in range(len(dig_in_channels)):
 	spike_train = []
-	for j in range(len(end_points[dig_in_channel_nums[i]])):
+	for j in range(len(start_points[dig_in_channel_nums[i]])):
 		# Skip the trial if the headstage fell off before it
-		if end_points[dig_in_channel_nums[i]][j] >= expt_end_time:
+		if start_points[dig_in_channel_nums[i]][j] >= expt_end_time:
 			continue
 		# Otherwise run through the units and convert their spike times to milliseconds
 		else:
 			spikes = np.zeros((len(units), durations[0] + durations[1]))
 			for k in range(len(units)):
 				# Get the spike times around the end of taste delivery
-				spike_times = np.where((units[k].times[:] <= end_points[dig_in_channel_nums[i]][j] + durations[1]*30)*(units[k].times[:] >= end_points[dig_in_channel_nums[i]][j] - durations[0]*30))[0]
+				spike_times = np.where((units[k].times[:] <= start_points[dig_in_channel_nums[i]][j] + durations[1]*30)*(units[k].times[:] >= start_points[dig_in_channel_nums[i]][j] - durations[0]*30))[0]
 				spike_times = units[k].times[spike_times]
-				spike_times = spike_times - end_points[dig_in_channel_nums[i]][j]
+				spike_times = spike_times - start_points[dig_in_channel_nums[i]][j]
 				spike_times = (spike_times/30).astype(int) + durations[0]
 				# Drop any spikes that are too close to the ends of the trial
 				spike_times = spike_times[np.where((spike_times >= 0)*(spike_times < durations[0] + durations[1]))[0]]
 				spikes[k, spike_times] = 1
 				#for l in range(durations[0] + durations[1]):
-				#	spikes[k, l] = len(np.where((units[k].times[:] >= end_points[dig_in_channel_nums[i]][j] - (durations[0]-l)*30)*(units[k].times[:] < end_points[dig_in_channel_nums[i]][j] - (durations[0]-l-1)*30))[0])
+				#	spikes[k, l] = len(np.where((units[k].times[:] >= end_start_pointspoints[dig_in_channel_nums[i]][j] - (durations[0]-l)*30)*(units[k].times[:] < start_points[dig_in_channel_nums[i]][j] - (durations[0]-l-1)*30))[0])
 					
 		# Append the spikes array to spike_train 
 		spike_train.append(spikes)
