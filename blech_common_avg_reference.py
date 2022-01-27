@@ -6,6 +6,7 @@ import tables
 import numpy as np
 import os
 import easygui
+from tqdm import tqdm
 
 # Ask for the directory where the hdf5 file sits, and change to that directory
 dir_name = easygui.diropenbox()
@@ -64,29 +65,46 @@ emg_channels.sort()
 # Now convert the electrode numbers to be averaged across to the absolute scale (0-63 if there are 2 ports with 32 recordings each with no EMG)
 CAR_electrodes = []
 # Run through the common average groups
+raw_electrodes = hf5.list_nodes('/raw')
+all_electrodes = [x for y in average_electrodes for x in y]
+all_electrodes_padded = [f'{int(x):02}' for x in all_electrodes]
+all_electrodes_inds = np.argsort(all_electrodes_padded)
+all_electrodes = [all_electrodes[i] for i in all_electrodes_inds]
+avg_electrodes_mapping = dict(zip(all_electrodes, range(len(raw_electrodes))))
+
 for group in range(num_groups):
-	# Now run through the electrodes and port chosen for that group, and convert to the absolute scale
-	this_group_electrodes = []
-	for electrode in average_electrodes[group]:
-		if len(emg_channels) == 0:
-			this_group_electrodes.append(int(electrode) + num_electrodes*ports.index(group_ports[group][0]))
-		else:
-			if group_ports[group] == emg_port and int(electrode) < emg_channels[0]:
-				this_group_electrodes.append(int(electrode) + num_electrodes*ports.index(group_ports[group][0]))
-			else:
-				this_group_electrodes.append(int(electrode) + num_electrodes*ports.index(group_ports[group][0]) - len(emg_channels))
-	CAR_electrodes.append(this_group_electrodes)
+    # Now run through the electrodes and port chosen for that group, 
+    # and convert to the absolute scale
+    # To allow for more varied emg layouts, instead of comparing with emg_channels[0]
+    # (which assumes emg channels will be together), check if the electrode number
+    # is higher than ANY emg_channels, and subtract however many channels it has passed
+    this_group_electrodes = []
+    for electrode in average_electrodes[group]:
+        this_group_electrodes.append(avg_electrodes_mapping[electrode])
+        #if len(emg_channels) == 0:
+        #	this_group_electrodes.append(int(electrode) + \
+                #            num_electrodes*ports.index(group_ports[group][0]))
+        #else:
+        #	if group_ports[group] == emg_port and int(electrode) < emg_channels[0]:
+        #		this_group_electrodes.append(int(electrode) + \
+                #                num_electrodes*ports.index(group_ports[group][0]))
+        #	else:
+        #		this_group_electrodes.append(int(electrode) + \
+                #                num_electrodes*ports.index(group_ports[group][0]) - len(emg_channels))
+    CAR_electrodes.append(this_group_electrodes)
 
 # Pull out the raw electrode nodes of the HDF5 file
-raw_electrodes = hf5.list_nodes('/raw')
 
 # First get the common average references by averaging across the electrodes picked for each group
 print("Calculating common average reference for {:d} groups".format(num_groups))
 common_average_reference = np.zeros((num_groups, hf5.root.raw.electrode0[:].shape[0]))
 for group in range(num_groups):
-	# Stack up the voltage data from all the electrodes that need to be averaged across in this CAR group	
-	# In hindsight, don't stack up all the data, it is a huge memory waste. Instead first add up the voltage values from each electrode to the same array, and divide by number of electrodes to get the average	
-	for electrode in CAR_electrodes[group]:
+	# Stack up the voltage data from all the electrodes that need to be 
+    # averaged across in this CAR group	
+	# In hindsight, don't stack up all the data, it is a huge memory waste. 
+    # Instead first add up the voltage values from each electrode to the same array, 
+    # and divide by number of electrodes to get the average	
+	for electrode in tqdm(CAR_electrodes[group]):
 		exec("common_average_reference[group, :] += hf5.root.raw.electrode{:d}[:]".format(electrode))
 
 	# Average the voltage data across electrodes by dividing by the number of electrodes in this group
@@ -95,7 +113,7 @@ for group in range(num_groups):
 print("Common average reference for {:d} groups calculated".format(num_groups))
 
 # Now run through the raw electrode data and subtract the common average reference from each of them
-for electrode in raw_electrodes:
+for electrode in tqdm(raw_electrodes):
 	electrode_num = int(str.split(electrode._v_pathname, 'electrode')[-1])
 	# Get the common average group number that this electrode belongs to
 	# We assume that each electrode belongs to only 1 common average reference group - IMPORTANT!
@@ -126,28 +144,3 @@ os.system("rm " + hdf5_name)
 
 # And rename the new file with the same old name
 os.system("mv tmp.h5 " + hdf5_name)
-	
-
-	
-
-
-
-
-
-
-
-
-
-			
-
-
-
-
-	
-
-
-
-
-
-
-
