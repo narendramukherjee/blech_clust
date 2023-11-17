@@ -17,6 +17,8 @@ import utils.blech_post_process_utils as post_utils
 
 from importlib import reload
 reload(post_utils)
+this_descriptor_handler = post_utils.unit_descriptor_handler(hf5, data_dir)
+self = this_descriptor_handler
 
 # Set seed to allow inter-run reliability
 # Also allows reusing the same sorting sheets across runs
@@ -330,7 +332,9 @@ while True:
                 )
 
     # Generate a copy of the unit_description data in the /saved_units dir
-    this_descriptor_handler.write_descriptor_to_saved_units(unit_name)
+    this_descriptor_handler.write_descriptor_to_saved_units(
+            this_descriptor_handler.counter,
+            )
     table.flush()
     hf5.flush()
 
@@ -341,7 +345,7 @@ while True:
 # Sort unit_descriptor by unit_number
 # This will be needed if sort_table is used, as using sort_table
 # will add merge/split marked units first
-unit_descriptor_handler.sort_table_and_saved_units()
+this_descriptor_handler.sort_table_and_saved_units()
 
 print('== Post-processing exiting ==')
 # Close the hdf5 file

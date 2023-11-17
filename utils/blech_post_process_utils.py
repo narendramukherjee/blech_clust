@@ -11,6 +11,7 @@ import pandas as pd
 import uuid
 from utils.blech_utils import entry_checker, imp_metadata
 from utils import blech_waveforms_datashader
+from datetime import datetime
 
 def cluster_check(x):
     clusters = re.findall('[0-9]+',x)
@@ -336,11 +337,12 @@ class unit_descriptor_handler():
     """
     Class to handle the unit_descriptor table in the hdf5 file
     """
-    def __init__(self, hf5):
+    def __init__(self, hf5, data_dir):
         self.hf5 = hf5
         # Make a table under /sorted_units describing the sorted units. 
         # If unit_descriptor already exists, 
         # just open it up in the variable table
+        self.data_dir = data_dir
         self.hf5 = hf5
         if '/unit_descriptor' in hf5:
             self.table = self.hf5.root.unit_descriptor
@@ -436,10 +438,18 @@ class unit_descriptor_handler():
         unit_list = self.hf5.list_nodes('/sorted_units')
         unit_hashes = []
         unit_names = []
+        unit_numbers = []
         for unit in unit_list:
-            unit_hashes.append(unit.hash)
-            unit_names.append(unit._v_pathname.split('/')[-1])
-        saved_frame = pd.DataFrame({'hash': unit_hashes, 'unit_name': unit_names})
+            metadata = unit.unit_metadata
+            unit_hashes.append(metadata.col('hash')[0])
+            unit_name = unit._v_pathname.split('/')[-1]
+            unit_names.append(unit_name)
+            unit_numbers.append(int(unit_name.split('unit')[-1]))
+        saved_frame = pd.DataFrame({
+            'hash': unit_hashes, 
+            'unit_name': unit_names,
+            'unit_number': unit_numbers,
+            })
         return saved_frame
 
     def table_to_frame(self,):
@@ -460,17 +470,19 @@ class unit_descriptor_handler():
         Check that the unit_descriptor table matches the saved units
         """
         saved_frame = self.get_saved_units_hashes()
-        table_frame = pd.DataFrame({'hash': self.table.cols.hash[:], 
-                                    'unit_name': self.table.cols.unit_name[:]})
+        table_frame = pd.DataFrame({
+            'hash': self.table.col('hash')[:], 
+            'unit_number': self.table.col('unit_number')[:]
+            })
 
         saved_frame.sort_values(by = 'hash', inplace = True)
         table_frame.sort_values(by = 'hash', inplace = True)
 
         merged_frame = pd.merge(
-                saved_frame, table_frame, on = 'unit_name', how = 'outer')
+                saved_frame, table_frame, on = 'unit_number', how = 'outer')
         merged_frame['match'] = merged_frame['hash_x'] == merged_frame['hash_y']
 
-        if saved_frame.equals(table_frame):
+        if all(merged_frame['match']): 
             return True, merged_frame
         else:
             print('Unit descriptor table does not match saved units \n')
@@ -532,11 +544,11 @@ class unit_descriptor_handler():
         unit_list = self.hf5.list_nodes('/sorted_units')
         metadata_list = []
         for unit in unit_list:
-            metadata_list.append(unit.metadata)
-        saved_frame = pd.DataFrame({'hash': unit_hashes, 
-                                    'unit_name': unit_names,
-                                    'electrode': unit_electrodes,
-                                    'count': unit_counts})
+            metadata_list.append(unit.unit_metadata[:])
+        col_names = unit.unit_metadata.colnames
+        saved_frame = pd.DataFrame(
+                data = [dict(zip(col_names, row[0])) for row in metadata_list]
+                )
         return saved_frame
 
     def clear_mismatches(self,):
@@ -554,16 +566,20 @@ class unit_descriptor_handler():
             # Delete unit descriptor and recreate from data
             # present in sorted_units directory
             # Generate log of old and new tables in data_dir
-            old_table = self.table.copy()
+            old_table = self.table_to_frame() 
             new_table = self.get_metadata_from_units() 
 
             # Delete old table and create new one
-            hf5.remove_node('/', 'unit_descriptor')
+            self.hf5.remove_node('/', 'unit_descriptor')
             self.table = self.hf5.create_table('/', 'unit_descriptor', 
                     description = unit_descriptor)
-            self.table.append(new_table.to_records(index = False))
+            for data_row in new_table.iterrows():
+                table_row = self.table.row
+                for col in self.table.colnames:
+                    table_row[col] = data_row[1][col]
+                table_row.append()
             self.table.flush()
-            hf5.flush()
+            self.hf5.flush()
 
             # Write log of old and new tables
             log_dir = os.path.join(self.data_dir, 'processing_log.txt')
@@ -573,9 +589,10 @@ class unit_descriptor_handler():
             with open(log_dir, 'a') as log_file:
                 log_file.write(f'Unit descriptor table cleared {datetime.now()} \n')
                 log_file.write('Old table: \n')
-                log_file.write(old_table)
+                log_file.write(old_table.to_string())
+                print('\n')
                 log_file.write('New table: \n')
-                log_file.write(new_table)
+                log_file.write(new_table.to_string())
 
     def get_unit_properties(self, counter, args, unit_details_file_bool):
         """
@@ -648,12 +665,12 @@ class unit_descriptor_handler():
         """
         wanted_row = self.table.read_where(\
                 'unit_number == unit_number')
-        self.hf5.create_table('/sorted_units',
-                f'unit_{unit_number}',
+        unit_table = self.hf5.create_table(
+                f'/sorted_units/unit{unit_number:03d}',
+                'unit_metadata',
                 description = unit_descriptor)
-        self.hf5.append_where('/sorted_units',
-                f'unit_{unit_number}',
-                wanted_row)
+        unit_table.append(wanted_row)
+        unit_table.flush()
         self.hf5.flush()
 
 
