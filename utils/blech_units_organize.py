@@ -37,6 +37,8 @@ for files in file_list:
 # Open the hdf5 file
 hf5 = tables.open_file(hdf5_name, 'r+')
 
+unit_descriptor_handler.clear_mismatches()
+
 #if len(hf5.root.unit_descriptor) == hf5.root.sorted_units._g_getnchildren():
 #    print('== unit_descriptor and sorted units counts match ==')
 #else:
@@ -44,43 +46,43 @@ hf5 = tables.open_file(hdf5_name, 'r+')
 #    raise Exception ("Please manually fix number of sorted units to "\
 #            "to match with unit_descriptor table")
 
-# Get list of units under the sorted_units group
-units = hf5.list_nodes('/sorted_units')
-# Get the unit numbers and sort them in descending order
-unit_nums = -np.sort(-np.array([int(str(unit).split('/')[-1][4:7]) for unit in units]))
-
-# Now run through the units in descending order - 
-# the number of units is taken from the unit_descriptor tables, 
-# assuming that the user deleted units without deleting
-# the corresponding entry in the table
-num_units_in_table = len(hf5.root.unit_descriptor) 
-for unit in reversed(range(num_units_in_table)):
-	# Check if this unit exists in the sorted unit list - 
-        # don't do anything if it exists
-	if unit in unit_nums:
-		continue
-	else:
-		# If the unit does not exist in the sorted unit list
-		# First delete the corresponding row from the unit_descriptor table
-		hf5.root.unit_descriptor.remove_row(unit)
-		hf5.flush()
-		# Check if this is the last unit (if you have 30 neurons, is this unit029?) 
-                # - don't rename units if that's the case
-		if unit == num_units_in_table - 1:
-			continue
-		# Otherwise rename all the previous units
-		else:
-			# Read all the current unit numbers
-			current_units = \
-                                np.array([int(str(current_unit).split('/')[-1][4:7]) \
-                                for current_unit in hf5.list_nodes('/sorted_units')])
-			# Run a loop from the missing unit number + 1 to the maximum current unit
-			for i in range(unit + 1, np.max(current_units) + 1, 1):
-				# Rename each of these units to the next lower number
-				hf5.rename_node('/sorted_units/unit{:03d}'.format(i), 
-                                        'unit{:03d}'.format(i - 1))
-				hf5.flush()
-hf5.close()		
+## Get list of units under the sorted_units group
+#units = hf5.list_nodes('/sorted_units')
+## Get the unit numbers and sort them in descending order
+#unit_nums = -np.sort(-np.array([int(str(unit).split('/')[-1][4:7]) for unit in units]))
+#
+## Now run through the units in descending order - 
+## the number of units is taken from the unit_descriptor tables, 
+## assuming that the user deleted units without deleting
+## the corresponding entry in the table
+#num_units_in_table = len(hf5.root.unit_descriptor) 
+#for unit in reversed(range(num_units_in_table)):
+#	# Check if this unit exists in the sorted unit list - 
+#        # don't do anything if it exists
+#	if unit in unit_nums:
+#		continue
+#	else:
+#		# If the unit does not exist in the sorted unit list
+#		# First delete the corresponding row from the unit_descriptor table
+#		hf5.root.unit_descriptor.remove_row(unit)
+#		hf5.flush()
+#		# Check if this is the last unit (if you have 30 neurons, is this unit029?) 
+#                # - don't rename units if that's the case
+#		if unit == num_units_in_table - 1:
+#			continue
+#		# Otherwise rename all the previous units
+#		else:
+#			# Read all the current unit numbers
+#			current_units = \
+#					np.array([int(str(current_unit).split('/')[-1][4:7]) \
+#					for current_unit in hf5.list_nodes('/sorted_units')])
+#			# Run a loop from the missing unit number + 1 to the maximum current unit
+#			for i in range(unit + 1, np.max(current_units) + 1, 1):
+#				# Rename each of these units to the next lower number
+#				hf5.rename_node('/sorted_units/unit{:03d}'.format(i), 
+#                                        'unit{:03d}'.format(i - 1))
+#				hf5.flush()
+#hf5.close()		
 print("Units organized")
 
 # Compress the file

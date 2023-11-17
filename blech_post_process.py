@@ -15,13 +15,12 @@ from utils import blech_waveforms_datashader
 from utils.blech_utils import entry_checker, imp_metadata
 import utils.blech_post_process_utils as post_utils
 
+from importlib import reload
+reload(post_utils)
+
 # Set seed to allow inter-run reliability
 # Also allows reusing the same sorting sheets across runs
 np.random.seed(0)
-
-def cluster_check(x):
-    clusters = re.findall('[0-9]+',x)
-    return sum([i.isdigit() for i in clusters]) == len(clusters)
 
 # Get directory where the hdf5 file sits, and change to that directory
 # Get name of directory with the data files
@@ -31,7 +30,8 @@ parser = argparse.ArgumentParser(
 parser.add_argument('--dir-name',  '-d', help = 'Directory containing data files')
 parser.add_argument('--show-plot', '-p', 
         help = 'Show waveforms while iterating (True/False)', default = 'True')
-parser.add_argument('--sort-file', '-f', help = 'CSV with sorted units')
+parser.add_argument('--sort-file', '-f', help = 'CSV with sorted units',
+                    default = None)
 args = parser.parse_args()
 
 if args.sort_file is not None:
@@ -43,21 +43,28 @@ if args.sort_file is not None:
     sort_table['len_cluster'] = \
             [len(re.findall('[0-9]+',str(x))) for x in sort_table.Cluster]
     
-    ## Get splits and merges out of the way first
-    #sort_table.sort_values(['len_cluster','Split'],ascending=False, inplace=True)
-    #true_index = sort_table.index
-    #sort_table.reset_index(inplace=True)
+    # Get splits and merges out of the way first
+    sort_table.sort_values(['len_cluster','Split'],ascending=False, inplace=True)
+    true_index = sort_table.index
+    sort_table.reset_index(inplace=True)
 
-if args.dir_name is not None: 
-    metadata_handler = imp_metadata([[],args.dir_name])
-else:
-    metadata_handler = imp_metadata([])
+data_dir = '/home/abuzarmahmood/Desktop/blech_clust/pipeline_testing/test_data_handling/test_data/KM45_5tastes_210620_113227_new'
+metadata_handler = imp_metadata([[],data_dir])
+
+#if args.dir_name is not None: 
+#    metadata_handler = imp_metadata([[],args.dir_name])
+#else:
+#    metadata_handler = imp_metadata([])
+
 dir_name = metadata_handler.dir_name
 os.chdir(dir_name)
 file_list = metadata_handler.file_list
 hdf5_name = metadata_handler.hdf5_name
 # Open the hdf5 file
 hf5 = tables.open_file(hdf5_name, 'r+')
+
+# Instantiate unit_descriptor_handler
+this_descriptor_handler = post_utils.unit_descriptor_handler(hf5)
 
 # Clean up the memory monitor files, pass if clean up has been done already
 post_utils.clean_memory_monitor_data()  
@@ -74,12 +81,17 @@ except:
 
 # Run an infinite loop as long as the user wants to 
 # pick clusters from the electrodes   
+
 while True:
 
     unit_details_bool = 0
     # If sort_file given, iterate through that, otherwise ask user
-    electrode_num, num_clusters, clusters = \
-            post_utils.get_electrode_details(args, sort_table, counter)
+    continue_bool, electrode_num, num_clusters, clusters = \
+            post_utils.get_electrode_details(
+                    args, 
+                    this_descriptor_handler.counter)
+
+    if not continue_bool: continue
 
     # Print out selections
     print('||| Electrode {}, Solution {}, Cluster {} |||'.\
@@ -99,10 +111,11 @@ while True:
     # Re-show images of neurons so dumb people like Abu can make sure they
     # picked the right ones
     #if ast.literal_eval(args.show_plot):
-    if args.show_plot == 'False':
+    if args.show_plot == 'True':
         post_utils.gen_select_cluster_plot(electrode_num, num_clusters, clusters)
 
-    # Check if the user wants to merge clusters if more than 1 cluster was chosen. 
+    # Check if the user wants to merge clusters 
+    # if more than 1 cluster was chosen. 
     # Else ask if the user wants to split/re-cluster the chosen cluster
     merge = False
     re_cluster = False
@@ -115,7 +128,7 @@ while True:
     else:
         # if sort_file present use that
         if args.sort_file is not None:
-            split_element = sort_table.Split[counter]
+            split_element = sort_table.Split[this_descriptor_handler.counter]
             if not (split_element.strip() == ''):
                     re_cluster = True
             else:
@@ -137,16 +150,19 @@ while True:
 
     # If the user asked to split/re-cluster, 
     # ask them for the clustering parameters and perform clustering
-    split_predictions = []
-    chosen_split = 0
     if re_cluster: 
+        ##############################
+        ## Split sequence
+        ##############################
         # Get clustering parameters from user
-        continue_bool, n_clusters, thresh, n_iter, n_restarts = \
+        continue_bool, n_clusters, n_iter, thresh, n_restarts = \
                 post_utils.get_clustering_params()
         if not continue_bool: continue
 
         # Make data array to be put through the GMM - 5 components: 
         # 3 PCs, scaled energy, amplitude
+        # Clusters is a list, and for len(clusters) == 1,
+        # the code below will always work
         this_cluster = np.where(predictions == int(clusters[0]))[0]
 
         data = post_utils.prepare_data(
@@ -167,14 +183,15 @@ while True:
     
         # Show the cluster plots if the solution converged
         if g.converged_:
-            ... = post_utils.get_clustering_details(
-                            g, 
-                            data, 
+            split_predictions = g.predict(data)
+            post_utils.generate_cluster_plots(
+                            split_predictions, 
                             spike_waveforms, 
                             spike_times, 
                             n_clusters, 
                             this_cluster)
         else:
+            split_predictions = []
             print("Solution did not converge "\
                     "- try again with higher number of iterations "\
                     "or lower convergence criterion")
@@ -186,42 +203,43 @@ while True:
                 post_utils.get_split_cluster_choice(n_clusters)
         if not continue_bool: continue
 
-    ##################################################
-
-    # If the user re-clustered/split clusters, 
-    # add the chosen clusters in split_clusters
-    if re_cluster:
-            hf5.create_group('/sorted_units', unit_name)
-            # Waveforms of originally chosen cluster
-            cluster_inds = np.where(predictions == int(clusters[0]))[0] 
-            fin_inds = np.concatenate(\
-                    [np.where(split_predictions == this_split)[0] \
-                                for this_split in chosen_split])
+        # Once selections have been made, save data
+        # Waveforms of originally chosen cluster
+        cluster_inds = np.where(predictions == int(clusters[0]))[0] 
+        fin_inds = np.concatenate(\
+                [np.where(split_predictions == this_split)[0] \
+                            for this_split in chosen_split])
 
 
-            ############################################################ 
-            unit_waveforms = spike_waveforms[cluster_inds, :]    
-            # Subsetting this set of waveforms to include only the chosen split
-            unit_waveforms = unit_waveforms[fin_inds]
+        ############################################################ 
+        unit_waveforms = spike_waveforms[cluster_inds, :]    
+        # Subsetting this set of waveforms to include only the chosen split
+        unit_waveforms = unit_waveforms[fin_inds]
 
-            # Do the same thing for the spike times
-            unit_times = spike_times[cluster_inds]
-            unit_times = unit_times[fin_inds] 
-            ############################################################ 
-
-            post_utils.save_unit(
-                    unit_waveforms,
-                    unit_times,
-                    unit_name,
-                    electrode_num,
-                    unit_description,
-                    hf5)
+        # Do the same thing for the spike times
+        unit_times = spike_times[cluster_inds]
+        unit_times = unit_times[fin_inds] 
+        ############################################################ 
 
 
-            # To consolidate asking for unit details (single unit vs multi,
-            # regular vs fast), set bool and ask for details at the end
-            unit_details_bool = 1
-            unit_details_file_bool = 0
+        # Plot selected clusters again after merging splits
+        post_utils.generate_datashader_plot(
+                unit_waveforms, 
+                unit_times,
+                title = 'Merged Splits',
+                )
+        plt.show()
+
+        this_descriptor_handler.save_unit(
+                unit_waveforms,
+                unit_times,
+                electrode_num,
+                )
+
+        # To consolidate asking for unit details (single unit vs multi,
+        # regular vs fast), set bool and ask for details at the end
+        unit_details_bool = 1
+        unit_details_file_bool = 0
             
     ##################################################
 
@@ -229,26 +247,28 @@ while True:
     # add that as a new unit in /sorted_units. 
     # Ask if the isolated unit is an almost-SURE single unit
     elif len(clusters) == 1:
-            hf5.create_group('/sorted_units', unit_name)
-            fin_inds = np.where(predictions == int(clusters[0]))[0]
+        ##############################
+        ## Single cluster selected 
+        ##############################
+        fin_inds = np.where(predictions == int(clusters[0]))[0]
 
-            post_utils.save_unit(
-                    spike_waveforms[fin_inds, :],
-                    spike_times[fin_inds],
-                    fin_inds, 
-                    unit_name,
-                    electrode_num,
-                    unit_description,
-                    hf5)
+        this_descriptor_handler.save_unit(
+                spike_waveforms[fin_inds, :],
+                spike_times[fin_inds],
+                electrode_num,
+                )
 
-            # To consolidate asking for unit details (single unit vs multi,
-            # regular vs fast), set bool and ask for details at the end
-            unit_details_bool = 1
-            # If unit was not manipulated (merge/split), read unit details
-            # from file if provided
-            unit_details_file_bool = 1
+        # To consolidate asking for unit details (single unit vs multi,
+        # regular vs fast), set bool and ask for details at the end
+        unit_details_bool = 1
+        # If unit was not manipulated (merge/split), read unit details
+        # from file if provided
+        unit_details_file_bool = 1
 
     else:
+        ##############################
+        ## Merge Sequence 
+        ##############################
         # If the chosen units are going to be merged, merge them
         if merge:
             fin_inds = np.concatenate(\
@@ -259,41 +279,31 @@ while True:
             unit_times = spike_times[fin_inds]
 
             # Generate plot for merged unit
-            violations1, violations2 = post_utils.generate_datashader_plot(
+            violations1, violations2,_,_ = post_utils.generate_datashader_plot(
                     unit_waveforms, 
+                    unit_times,
                     title = 'Merged Unit',
                     )
+            plt.show()
 
             # Warn the user about the frequency of ISI violations 
             # in the merged unit
-            print_str = (f':: Merged cluster \n'
-                f':: {violations1:.1f} % (<2ms)\n'
-                f':: {violations2:.1f} % (<1ms)\n'
-                f':: {len(unit_times)} Total Waveforms \n' 
-                ':: I want to still merge these clusters into one unit (y/n) :: ')
-            proceed_msg, continue_bool = entry_checker(\
-                    msg = print_str, 
-                    check_func = lambda x: x in ['y','n'],
-                    fail_response = 'Please enter (y/n)')
-            if continue_bool:
-                if proceed_msg == 'y': 
-                    proceed = True
-                elif proceed_msg == 'n': 
-                    proceed = False
-            else:
-                continue
+            continue_bool, proceed = \
+                        post_utils.generate_violations_warning(
+                                violations1,
+                                violations2,
+                                unit_times,
+                                )
+            if not continue_bool: continue
 
             # Create unit if the user agrees to proceed, 
             # else abort and go back to start of the loop 
             if proceed:     
-                post_utils.save_unit(
+                this_descriptor_handler.save_unit(
                         unit_waveforms,
                         unit_times,
-                        unit_name,
                         electrode_num,
-                        unit_description,
-                        hf5)
-
+                        )
 
                 # To consolidate asking for unit details (single unit vs multi,
                 # regular vs fast), set bool and ask for details at the end
@@ -306,13 +316,23 @@ while True:
     # Ask user for unit details, and ask for HDF5 file 
     if unit_details_bool:
         continue_bool, unit_description = \
-                post_utils.get_unit_properties(unit_description, counter)
+                this_descriptor_handler.get_unit_properties(
+                        this_descriptor_handler.counter,
+                        args,
+                        unit_details_file_bool,
+                        )
         if not continue_bool:
             continue
 
-        unit_description.append()
-        table.flush()
-        hf5.flush()
+        this_descriptor_handler.modify_row(
+                [this_descriptor_handler.counter],
+                list(unit_description.values()),
+                )
+
+    # Generate a copy of the unit_description data in the /saved_units dir
+    this_descriptor_handler.write_descriptor_to_saved_units(unit_name)
+    table.flush()
+    hf5.flush()
 
 
     print('==== {} Complete ===\n'.format(unit_name))
