@@ -29,7 +29,8 @@ np.random.seed(0)
 # Create argument parser
 parser = argparse.ArgumentParser(
         description = 'Spike extraction and sorting script')
-parser.add_argument('--dir-name',  '-d', help = 'Directory containing data files')
+parser.add_argument('--dir-name',  '-d', 
+                    help = 'Directory containing data files')
 parser.add_argument('--show-plot', '-p', 
         help = 'Show waveforms while iterating (True/False)', default = 'True')
 parser.add_argument('--sort-file', '-f', help = 'CSV with sorted units',
@@ -264,6 +265,10 @@ while True:
     ############################################################  
     # Finally, save the unit to the HDF5 file
     ############################################################  
+    hf5.remove_node('/', 'sorted_units', recursive = True)
+
+    hf5.remove_node('/sorted_units', 'unit001', recursive = True)
+
     continue_bool = this_descriptor_handler.save_unit(
             unit_waveforms,
             unit_times,

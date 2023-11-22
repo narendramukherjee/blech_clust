@@ -109,6 +109,40 @@ def gen_select_cluster_plot(electrode_num, num_clusters, clusters):
     fig.tight_layout()
     plt.show()
 
+def generate_cluster_plots(
+        split_predictions, 
+        spike_waveforms, 
+        spike_times, 
+        n_clusters, 
+        this_cluster
+        ):
+
+    n_rows = int(np.ceil(np.sqrt(n_clusters)))
+    n_cols = int(np.ceil(n_clusters/n_rows))
+    fig, ax = plt.subplots(n_rows, n_cols, 
+                           figsize = (10,10))
+
+    for cluster in range(n_clusters):
+        split_points = np.where(split_predictions == cluster)[0]
+        # Waveforms and times from the chosen cluster
+        slices_dejittered = spike_waveforms[this_cluster, :]            
+        times_dejittered = spike_times[this_cluster]
+        # Waveforms and times from the chosen split of the chosen cluster
+        slices_dejittered = slices_dejittered[split_points, :]
+        times_dejittered = times_dejittered[split_points]               
+
+        generate_datashader_plot(
+                slices_dejittered,
+                times_dejittered,
+                title = f'Split Cluster {cluster}',
+                ax = ax.flatten()[cluster],)
+
+    for cluster in range(n_clusters, n_rows*n_cols):
+        ax.flatten()[cluster].axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
 def get_clustering_params():
     """
     Ask user for clustering parameters
@@ -148,39 +182,6 @@ def get_clustering_params():
 
     return continue_bool, n_clusters, n_iter, thresh, n_restarts
 
-def generate_cluster_plots(
-        split_predictions, 
-        spike_waveforms, 
-        spike_times, 
-        n_clusters, 
-        this_cluster
-        ):
-
-    n_rows = int(np.ceil(np.sqrt(n_clusters)))
-    n_cols = int(np.ceil(n_clusters/n_rows))
-    fig, ax = plt.subplots(n_rows, n_cols, 
-                           figsize = (10,10))
-
-    for cluster in range(n_clusters):
-        split_points = np.where(split_predictions == cluster)[0]
-        # Waveforms and times from the chosen cluster
-        slices_dejittered = spike_waveforms[this_cluster, :]            
-        times_dejittered = spike_times[this_cluster]
-        # Waveforms and times from the chosen split of the chosen cluster
-        slices_dejittered = slices_dejittered[split_points, :]
-        times_dejittered = times_dejittered[split_points]               
-
-        generate_datashader_plot(
-                slices_dejittered,
-                times_dejittered,
-                title = f'Split Cluster {cluster}',
-                ax = ax.flatten()[cluster],)
-
-    for cluster in range(n_clusters, n_rows*n_cols):
-        ax.flatten()[cluster].axis('off')
-
-    plt.tight_layout()
-    plt.show()
 
 def get_split_cluster_choice(n_clusters):
     choice_list = tuple([str(i) for i in range(n_clusters)]) 
@@ -359,11 +360,6 @@ class unit_descriptor_handler():
         # just open it up in the variable table
         self.data_dir = data_dir
         self.hf5 = hf5
-        if '/unit_descriptor' in hf5:
-            self.table = self.hf5.root.unit_descriptor
-        else:
-            self.table = self.hf5.create_table('/', 'unit_descriptor', 
-                    description = unit_descriptor)
         self.counter = len(self.hf5.root.unit_descriptor) - 1
 
     def get_latest_unit_name(self,):
@@ -487,12 +483,27 @@ class unit_descriptor_handler():
             })
         return saved_frame
 
+    def check_unit_descriptor_table(self,):
+        if '/unit_descriptor' not in self.hf5:
+            print(':: No unit_descriptor table found ::')
+            return False
+        else:
+            return True
+
+    def return_unit_descriptor_table(self,):
+        """
+        Return the unit descriptor table
+        """
+        if self.check_unit_descriptor_table():
+            return self.hf5.root.unit_descriptor
+
     def table_to_frame(self,):
         """
         Convert the unit_descriptor table to a pandas dataframe
         """
-        table_cols = self.table.colnames
-        dat_list = [self.table[i] for i in range(self.table.shape[0])]
+        table = self.return_unit_descriptor_table() 
+        table_cols = table.colnames
+        dat_list = [table[i] for i in range(table.shape[0])]
         dict_list = [dict(zip(table_cols, dat)) for dat in dat_list]
         table_frame = pd.DataFrame(
                                 data = dict_list,
@@ -504,10 +515,11 @@ class unit_descriptor_handler():
         """
         Check that the unit_descriptor table matches the saved units
         """
+        table = self.return_unit_descriptor_table() 
         saved_frame = self.get_saved_units_hashes()
         table_frame = pd.DataFrame({
-            'hash': self.table.col('hash')[:], 
-            'unit_number': self.table.col('unit_number')[:]
+            'hash': table.col('hash')[:], 
+            'unit_number': table.col('unit_number')[:]
             })
 
         saved_frame.sort_values(by = 'hash', inplace = True)
@@ -523,79 +535,6 @@ class unit_descriptor_handler():
             print('Unit descriptor table does not match saved units \n')
             return False, merged_frame
 
-    def sort_table_and_saved_units(self,):
-        """
-        Sort both unit_descriptor table and sorted_units directory
-        in HDF5 file
-        """
-        check_bool, merged_frame = self.check_table_matches_saved_units()
-        if not check_bool:
-            print('Please organize units before moving forward')
-            print('The following units do not match: \n')
-            print(merged_frame)
-            #exit()
-        else:
-            unit_descriptor_frame = pd.DataFrame(
-                    {
-                        'unit_number': self.table.cols.unit_number[:],
-                        'electrode_number': self.table.cols.electrode_number[:],
-                        'hash': self.table.cols.hash[:],
-                        }
-                    )
-            unit_descriptor_frame.sort_values(
-                    by = 'electrode_number', inplace = True)
-            unit_descriptor_frame['new_unit_number'] = \
-                    np.arange(len(unit_descriptor_frame))
-            for row in unit_descriptor_frame.iterrows():
-                this_hash = row[1]['hash']
-                this_unit_number = row[1]['new_unit_number']
-                self._rename_unit(this_hash, this_unit_number)
-        table.flush()
-        hf5.flush()
-
-    def clear_mismatches(self,):
-        """
-        If there are mismatches between the unit_descriptor table and the
-        sorted_units directory, clear the mismatches from both
-        """
-        check_bool, merged_frame = self.check_table_matches_saved_units()
-        if check_bool:
-            print('No mismatches to clear')
-            print()
-            print(merged_frame)
-            exit()
-        else:
-            # Delete unit descriptor and recreate from data
-            # present in sorted_units directory
-            # Generate log of old and new tables in data_dir
-            old_table = self.table_to_frame() 
-            new_table = self.get_metadata_from_units() 
-
-            # Delete old table and create new one
-            self.hf5.remove_node('/', 'unit_descriptor')
-            self.table = self.hf5.create_table('/', 'unit_descriptor', 
-                    description = unit_descriptor)
-            for data_row in new_table.iterrows():
-                table_row = self.table.row
-                for col in self.table.colnames:
-                    table_row[col] = data_row[1][col]
-                table_row.append()
-            self.table.flush()
-            self.hf5.flush()
-
-            # Write log of old and new tables
-            log_dir = os.path.join(self.data_dir, 'processing_log.txt')
-            print(f'Unit descriptor table cleared {datetime.now()} \n')
-            print(f'Changes in log: {log_dir}')
-
-            with open(log_dir, 'a') as log_file:
-                log_file.write(f'Unit descriptor table cleared {datetime.now()} \n')
-                log_file.write('Old table: \n')
-                log_file.write(old_table.to_string())
-                print('\n')
-                log_file.write('New table: \n')
-                log_file.write(new_table.to_string())
-
     def _rename_unit(self, hash, new_name):
         """
         Rename units in both unit_descriptor table and sorted_units directory
@@ -603,9 +542,16 @@ class unit_descriptor_handler():
         """
         # Rename saved unit
         unit_list = self.hf5.list_nodes('/sorted_units')
-        wanted_unit = [unit for unit in unit_list \
-                if unit.unit_metadata[:]['hash'][0] == hash][0]
-        wanted_unit._v_pathname = '/sorted_units/%s' % new_name
+        wanted_unit_list = [unit for unit in unit_list \
+                if unit.unit_metadata[:]['hash'][0] == hash]
+        if not len(wanted_unit_list) > 0:
+            print('Unit not found')
+            return
+        elif len(wanted_unit_list) > 1:
+            print('Multiple units found')
+            return
+        wanted_unit = wanted_unit_list[0]
+        wanted_unit._f_rename(new_name)
 
         # Flush table and hf5
         self.hf5.flush()
@@ -642,9 +588,42 @@ class unit_descriptor_handler():
         # Rename units
         for row in metadata_table.iterrows():
             this_hash = row[1]['hash']
+            decoded_hash = this_hash.decode('utf-8')
+            self._rename_unit(this_hash, decoded_hash)
+        # This double step is necessary to avoid renaming conflicts
+        for row in metadata_table.iterrows():
+            this_hash = row[1]['hash']
             this_unit_number = row[1]['new_unit_number']
             this_unit_name = f'unit{this_unit_number:03d}'
-            self._rename_unit(this_hash, this_unit_name)
+            decoded_hash = this_hash.decode('utf-8')
+            self._rename_unit(decoded_hash, this_unit_name)
+
+        # Update unit_descriptor table
+        self._write_unit_descriptor_from_sorted_units()
+
+    def _write_unit_descriptor_from_sorted_units(self,):
+        """
+        Generate unit descriptor table from metadata
+        present in sorted units
+        """
+        metadata_table = self.get_metadata_from_units()
+
+        if '/unit_descriptor' in self.hf5:
+            self.hf5.remove_node('/unit_descriptor')
+        table = self.hf5.create_table(
+                '/','unit_descriptor',
+                description = unit_descriptor)
+
+        # Write from metadata table to unit_descriptor table
+        for ind, this_row in metadata_table.iterrows():
+            # Get a new unit_descriptor table row for this new unit
+            unit_description = table.row    
+            for col in table.colnames: 
+                unit_description[col] = this_row[col]
+            unit_description.append()
+
+        table.flush()
+        self.hf5.flush()
 
     def get_unit_properties(self, args, split_or_merge):
         """
@@ -713,30 +692,6 @@ class unit_descriptor_handler():
 
         return continue_bool, property_dict 
 
-    def modify_row(self, row_ind, new_data):
-        self.table.modify_coordinates(row_ind, new_data)
-        self.table.flush()
-        
-    def write_descriptor_to_saved_units(self, unit_number):
-        """
-        For the specified unit, write the unit descriptor row
-        to the saved_units directory
-        """
-        wanted_row = self.table.read_where(\
-                f'unit_number == {unit_number}')
-        # Keep everything but the unit number
-        # Unit number will be fluid and will be determined
-        # by electrode number
-        unit_table = self.hf5.create_table(
-                f'/sorted_units/unit{unit_number:03d}',
-                'unit_metadata',
-                description = sorted_unit_metadata)
-        table_row = unit_table.row
-        for col in unit_table.colnames: 
-            table_row[col] = wanted_row[col][0]
-        table_row.append()
-        unit_table.flush()
-        self.hf5.flush()
 
 class sorted_unit_metadata(tables.IsDescription):
     electrode_number = tables.Int32Col()
