@@ -232,6 +232,9 @@ def clean_memory_monitor_data():
     """
     Clean memory monitor data
     """
+    print('==============================')
+    print('Cleaning memory monitor data')
+    print()
 
     if not os.path.exists('./memory_monitor_clustering/memory_usage.txt'):
         file_list = os.listdir('./memory_monitor_clustering')
@@ -244,6 +247,7 @@ def clean_memory_monitor_data():
             except:
                 pass    
         f.close()
+    print('==============================')
 
 def get_ISI_violations(unit_times):
     """
@@ -296,6 +300,10 @@ def delete_raw_recordings(hf5):
     Delete raw recordings from hdf5 file
     """
 
+    print('==============================')
+    print("Removing raw recordings from hdf5 file")
+    print()
+
     try:
         hf5.remove_node('/raw', recursive = 1)
         # And if successful, close the currently open hdf5 file and 
@@ -311,6 +319,7 @@ def delete_raw_recordings(hf5):
         print("File repacked")
     except:
         print("Raw recordings have already been removed, so moving on ..")
+    print('==============================')
 
 def generate_violations_warning(
         violations1,
@@ -336,6 +345,12 @@ def generate_violations_warning(
 class unit_descriptor_handler():
     """
     Class to handle the unit_descriptor table in the hdf5 file
+
+    Ops to handle mismatch between unit_descriptor and sorted_units:
+        1- Resort units according to electrode number using
+                unit metadata
+        2- Recreate unit_descriptor table from scratch using
+                metadata from sorted_units
     """
     def __init__(self, hf5, data_dir):
         self.hf5 = hf5
@@ -391,10 +406,21 @@ class unit_descriptor_handler():
             unit_waveforms, 
             unit_times,
             electrode_num,
+            args,
+            split_or_merge,
             ):
         """
         Save unit to hdf5 file
         """
+        continue_bool, unit_properties = \
+                self.get_unit_properties(
+                        args,
+                        split_or_merge,
+                        )
+        if not continue_bool:
+            print(':: Unit not saved ::')
+            return continue_bool
+
         if '/sorted_units' not in self.hf5:
             self.hf5.create_group('/', 'sorted_units')
         unit_name, max_unit = self.get_latest_unit_name()
@@ -415,19 +441,28 @@ class unit_descriptor_handler():
         times = self.hf5.create_array('/sorted_units/%s' % unit_name, \
                                     'times', unit_times)
 
+
+
+        unit_table = self.hf5.create_table(
+                f'/sorted_units/{unit_name}',
+                'unit_metadata',
+                description = sorted_unit_metadata)
+
         # Get a new unit_descriptor table row for this new unit
-        unit_description = self.table.row    
+        unit_description = unit_table.row    
         # Add to unit_descriptor table
         unit_description['waveform_count'] = int(len(unit_times))
         unit_description['electrode_number'] = electrode_num
         unit_description['hash'] = unit_hash
-        unit_description['unit_number'] = int(max_unit + 1)
+        unit_description['single_unit'] = unit_properties['single_unit'] 
+        unit_description['regular_spiking'] = unit_properties['regular_spiking']
+        unit_description['fast_spiking'] = unit_properties['fast_spiking']
         unit_description.append()
 
         self.counter += 1
 
         # Flush table and hf5
-        self.table.flush()
+        unit_table.flush()
         self.hf5.flush()
 
     def get_saved_units_hashes(self,):
@@ -488,25 +523,6 @@ class unit_descriptor_handler():
             print('Unit descriptor table does not match saved units \n')
             return False, merged_frame
 
-    def _rename_unit(self, hash, new_name):
-        """
-        Rename units in both unit_descriptor table and sorted_units directory
-        in HDF5 file, using hash as identifier
-        """
-        # Rename saved unit
-        unit_list = self.hf5.list_nodes('/sorted_units')
-        wanted_unit = [unit for unit in unit_list if unit.hash == hash][0]
-        wanted_unit._v_pathname = '/sorted_units/%s' % new_name
-
-        # Rename unit in unit_descriptor table
-        wanted_row = self.table.get_where_list(f'hash == {hash}')
-        self.table.cols.unit_name[wanted_row] = new_name
-
-        # Flush table and hf5
-        self.table.flush()
-        self.hf5.flush()
-
-
     def sort_table_and_saved_units(self,):
         """
         Sort both unit_descriptor table and sorted_units directory
@@ -517,7 +533,7 @@ class unit_descriptor_handler():
             print('Please organize units before moving forward')
             print('The following units do not match: \n')
             print(merged_frame)
-            exit()
+            #exit()
         else:
             unit_descriptor_frame = pd.DataFrame(
                     {
@@ -536,20 +552,6 @@ class unit_descriptor_handler():
                 self._rename_unit(this_hash, this_unit_number)
         table.flush()
         hf5.flush()
-
-    def get_metadata_from_units(self,):
-        """
-        Extracts unit metadata from saved_units directory
-        """
-        unit_list = self.hf5.list_nodes('/sorted_units')
-        metadata_list = []
-        for unit in unit_list:
-            metadata_list.append(unit.unit_metadata[:])
-        col_names = unit.unit_metadata.colnames
-        saved_frame = pd.DataFrame(
-                data = [dict(zip(col_names, row[0])) for row in metadata_list]
-                )
-        return saved_frame
 
     def clear_mismatches(self,):
         """
@@ -594,29 +596,79 @@ class unit_descriptor_handler():
                 log_file.write('New table: \n')
                 log_file.write(new_table.to_string())
 
-    def get_unit_properties(self, counter, args, unit_details_file_bool):
+    def _rename_unit(self, hash, new_name):
+        """
+        Rename units in both unit_descriptor table and sorted_units directory
+        in HDF5 file, using hash as identifier
+        """
+        # Rename saved unit
+        unit_list = self.hf5.list_nodes('/sorted_units')
+        wanted_unit = [unit for unit in unit_list \
+                if unit.unit_metadata[:]['hash'][0] == hash][0]
+        wanted_unit._v_pathname = '/sorted_units/%s' % new_name
+
+        # Flush table and hf5
+        self.hf5.flush()
+
+
+    def get_metadata_from_units(self,):
+        """
+        Extracts unit metadata from saved_units directory
+        """
+        unit_list = self.hf5.list_nodes('/sorted_units')
+        metadata_list = []
+        for unit in unit_list:
+            metadata_list.append(unit.unit_metadata[:])
+        col_names = unit.unit_metadata.colnames
+        saved_frame = pd.DataFrame(
+                data = [dict(zip(col_names, row[0])) for row in metadata_list]
+                )
+        saved_frame['unit_name'] = [unit._v_pathname.split('/')[-1]
+                for unit in unit_list]
+        saved_frame['unit_number'] = [int(unit_name.split('unit')[-1])
+                for unit_name in saved_frame['unit_name']]
+        return saved_frame
+
+    def resort_units(self,):
+        """
+        1) Get metadata from units
+        2) Rename units sorted by electrode
+        3) Update unit_descriptor table
+        """
+        metadata_table = self.get_metadata_from_units()
+        metadata_table.sort_values(by = 'electrode_number', inplace = True)
+        metadata_table['new_unit_number'] = np.arange(len(metadata_table))
+
+        # Rename units
+        for row in metadata_table.iterrows():
+            this_hash = row[1]['hash']
+            this_unit_number = row[1]['new_unit_number']
+            this_unit_name = f'unit{this_unit_number:03d}'
+            self._rename_unit(this_hash, this_unit_name)
+
+    def get_unit_properties(self, args, split_or_merge):
         """
         Ask user for unit properties and save in both unit_descriptor table
         and sorted_units directory in HDF5 file
         """
 
-        unit_description = dict(
-                zip(self.table.colnames, self.table[counter]))
-        unit_description['regular_spiking'] = 0
-        unit_description['fast_spiking'] = 0
+        #unit_description = dict(
+        #        zip(self.table.colnames, self.table[self.counter]))
+        #unit_description['regular_spiking'] = 0
+        #unit_description['fast_spiking'] = 0
 
-        if unit_details_file_bool and (args.sort_file is not None):
-            single_unit_msg = sort_table.single_unit[counter]
+        if (not split_or_merge) and (args.sort_file is not None):
+            single_unit_msg = sort_table.single_unit[self.counter]
             if not (single_unit_msg.strip() == ''):
                 single_unit = True
 
                 # If single unit, check unit type
-                unit_type_msg = sort_table.Type[counter] 
+                unit_type_msg = sort_table.Type[self.counter] 
                 if unit_type_msg == 'r': 
                     unit_type = 'regular_spiking'
                 elif unit_type_msg == 'f': 
                     unit_type = 'fast_spiking'
-                unit_description[unit_type] = 1
+                #unit_description[unit_type] = 1
             else:
                 single_unit = False
 
@@ -648,11 +700,18 @@ class unit_descriptor_handler():
                         unit_type = 'fast_spiking'
                 else:
                     return continue_bool, None
-                unit_description[unit_type] = 1
+                #unit_description[unit_type] = 1
+            else:
+                unit_type = 'none'
 
-        unit_description['single_unit'] = int(single_unit)
+        #unit_description['single_unit'] = int(single_unit)
+        property_dict = dict(
+                single_unit = int(single_unit),
+                regular_spiking = int(unit_type == 'regular_spiking'),
+                fast_spiking = int(unit_type == 'fast_spiking'),
+                )
 
-        return continue_bool, unit_description
+        return continue_bool, property_dict 
 
     def modify_row(self, row_ind, new_data):
         self.table.modify_coordinates(row_ind, new_data)
@@ -664,18 +723,29 @@ class unit_descriptor_handler():
         to the saved_units directory
         """
         wanted_row = self.table.read_where(\
-                'unit_number == unit_number')
+                f'unit_number == {unit_number}')
+        # Keep everything but the unit number
+        # Unit number will be fluid and will be determined
+        # by electrode number
         unit_table = self.hf5.create_table(
                 f'/sorted_units/unit{unit_number:03d}',
                 'unit_metadata',
-                description = unit_descriptor)
-        unit_table.append(wanted_row)
+                description = sorted_unit_metadata)
+        table_row = unit_table.row
+        for col in unit_table.colnames: 
+            table_row[col] = wanted_row[col][0]
+        table_row.append()
         unit_table.flush()
         self.hf5.flush()
 
+class sorted_unit_metadata(tables.IsDescription):
+    electrode_number = tables.Int32Col()
+    single_unit = tables.Int32Col()
+    regular_spiking = tables.Int32Col()
+    fast_spiking = tables.Int32Col()
+    waveform_count = tables.Int32Col()
+    hash = tables.StringCol(10)
 
-
-            
 # Define a unit_descriptor class to be used to add things (anything!) 
 # about the sorted units to a pytables table
 class unit_descriptor(tables.IsDescription):
@@ -687,3 +757,47 @@ class unit_descriptor(tables.IsDescription):
     waveform_count = tables.Int32Col()
     hash = tables.StringCol(10)
 
+class split_merge_signal:
+    def __init__(self, clusters, args): 
+        """
+        First check whether there are multiple clusters to merge
+        If not, check whether there is a split/sort file
+        If not, ask whether to split
+        """
+        self.clusters = clusters
+        self.args = args
+        if not self.check_merge_clusters():
+            if not self.check_split_sort_file():
+                self.ask_split()
+
+
+    def check_merge_clusters(self):
+        if len(self.clusters) > 1:
+            self.merge = True
+            self.split = False
+            return True
+        else:
+            self.merge = False
+            return False
+
+    def ask_split(self):
+        msg, continue_bool = entry_checker(\
+                msg = 'SPLIT this cluster? (y/n)',
+                check_func = lambda x: x in ['y','n'],
+                fail_response = 'Please enter (y/n)')
+        if continue_bool:
+            if msg == 'y': 
+                self.split = True
+            elif msg == 'n': 
+                self.split = False
+
+    def check_split_sort_file(self):
+        if args.sort_file is not None:
+            split_element = sort_table.Split[this_descriptor_handler.counter]
+            if not (split_element.strip() == ''):
+                self.split = True
+            else:
+                self.split = False
+            return True
+        else:
+            return False
