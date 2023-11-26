@@ -22,10 +22,8 @@ info_dict = metadata_handler.info_dict
 hf5 = tables.open_file(metadata_handler.hdf5_name, 'r+')
 
 # Make directory to store the PSTH plots. Delete and remake the directory if it exists
-try:
+if os.path.exists('./overlay_PSTH'):
     os.system('rm -r '+'./overlay_PSTH')
-except:
-    pass
 os.mkdir('./overlay_PSTH')
 
 # Now ask the user to put in the identities of the digital inputs

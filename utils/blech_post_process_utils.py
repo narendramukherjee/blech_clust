@@ -411,7 +411,6 @@ class unit_descriptor_handler():
         # just open it up in the variable table
         self.data_dir = data_dir
         self.hf5 = hf5
-        self.counter = len(self.hf5.root.unit_descriptor) - 1
 
     def get_latest_unit_name(self,):
         """
@@ -421,11 +420,6 @@ class unit_descriptor_handler():
         # Get list of existing nodes/groups under /sorted_units
         saved_units_list = self.hf5.list_nodes('/sorted_units')
 
-        # if sort_table given, use that to name units
-        #if args.sort_file is not None:
-        #    unit_name = 'unit%03d' % int(true_index[counter])
-
-        #else:
         # If saved_units_list is empty, start naming units from 000
         if saved_units_list == []:             
             unit_name = 'unit%03d' % 0
@@ -472,11 +466,6 @@ class unit_descriptor_handler():
             self.hf5.create_group('/', 'sorted_units')
         unit_name, max_unit = self.get_latest_unit_name()
         self.hf5.create_group('/sorted_units', unit_name)
-        # Put in unit number
-        # if args.sort_file is not None:
-        #     # If sort-file is given, use sort_table index 
-        #     unit_description['unit_number'] = int(true_index[counter])
-        # else:
 
         # Get a hash for the unit to compare stored data 
         # with unit_descriptor table
@@ -505,8 +494,6 @@ class unit_descriptor_handler():
         unit_description['regular_spiking'] = unit_properties['regular_spiking']
         unit_description['fast_spiking'] = unit_properties['fast_spiking']
         unit_description.append()
-
-        self.counter += 1
 
         # Flush table and hf5
         unit_table.flush()
