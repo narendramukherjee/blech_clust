@@ -1,3 +1,6 @@
+############################################################
+# Imports and Settings
+############################################################
 import os
 import tables
 import numpy as np
@@ -22,6 +25,9 @@ import utils.blech_post_process_utils as post_utils
 # Also allows reusing the same sorting sheets across runs
 np.random.seed(0)
 
+############################################################
+# Input from user and setup data 
+############################################################
 # Get directory where the hdf5 file sits, and change to that directory
 # Get name of directory with the data files
 # Create argument parser
@@ -35,16 +41,7 @@ parser.add_argument('--sort-file', '-f', help = 'CSV with sorted units',
                     default = None)
 args = parser.parse_args()
 
-
-data_dir = '/home/abuzarmahmood/Desktop/blech_clust/pipeline_testing/test_data_handling/test_data/KM45_5tastes_210620_113227_new'
-metadata_handler = imp_metadata([[],data_dir])
-from glob import glob
-sort_file_path = glob(os.path.join(data_dir, '*sorted*'))[0]
-args.sort_file = sort_file_path 
-
-from importlib import reload
-reload(post_utils)
-
+##############################
 # Instantiate sort_file_handler
 this_sort_file_handler = post_utils.sort_file_handler(args.sort_file)
 
@@ -60,6 +57,7 @@ hdf5_name = metadata_handler.hdf5_name
 # Open the hdf5 file
 hf5 = tables.open_file(hdf5_name, 'r+')
 
+##############################
 # Instantiate unit_descriptor_handler
 this_descriptor_handler = post_utils.unit_descriptor_handler(hf5, dir_name)
 
@@ -74,6 +72,9 @@ post_utils.delete_raw_recordings(hf5)
 if not '/sorted_units' in hf5:
     hf5.create_group('/', 'sorted_units')
 
+############################################################
+# Main Processing Loop 
+############################################################
 # Run an infinite loop as long as the user wants to 
 # pick clusters from the electrodes   
 
@@ -281,6 +282,9 @@ while True:
     print('==== {} Complete ===\n'.format(unit_name))
     print('==== Iteration Ended ===\n')
 
+############################################################
+# Final write of unit_descriptor and cleanup
+############################################################
 # Sort unit_descriptor by unit_number
 # This will be needed if sort_table is used, as using sort_table
 # will add merge/split marked units first
