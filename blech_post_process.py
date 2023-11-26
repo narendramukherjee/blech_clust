@@ -9,16 +9,19 @@ import matplotlib.image as mpimg
 from sklearn.mixture import GaussianMixture
 import argparse
 import pandas as pd
+import matplotlib
+
+matplotlib.rcParams['font.size'] = 6
 
 # Import 3rd party code
 from utils import blech_waveforms_datashader
 from utils.blech_utils import entry_checker, imp_metadata
 import utils.blech_post_process_utils as post_utils
 
-from importlib import reload
-reload(post_utils)
-this_descriptor_handler = post_utils.unit_descriptor_handler(hf5, data_dir)
-self = this_descriptor_handler
+#from importlib import reload
+#reload(post_utils)
+#this_descriptor_handler = post_utils.unit_descriptor_handler(hf5, data_dir)
+#self = this_descriptor_handler
 
 # Set seed to allow inter-run reliability
 # Also allows reusing the same sorting sheets across runs
@@ -51,13 +54,13 @@ if args.sort_file is not None:
     true_index = sort_table.index
     sort_table.reset_index(inplace=True)
 
-data_dir = '/home/abuzarmahmood/Desktop/blech_clust/pipeline_testing/test_data_handling/test_data/KM45_5tastes_210620_113227_new'
-metadata_handler = imp_metadata([[],data_dir])
+#data_dir = '/home/abuzarmahmood/Desktop/blech_clust/pipeline_testing/test_data_handling/test_data/KM45_5tastes_210620_113227_new'
+#metadata_handler = imp_metadata([[],data_dir])
 
-#if args.dir_name is not None: 
-#    metadata_handler = imp_metadata([[],args.dir_name])
-#else:
-#    metadata_handler = imp_metadata([])
+if args.dir_name is not None: 
+    metadata_handler = imp_metadata([[],args.dir_name])
+else:
+    metadata_handler = imp_metadata([])
 
 dir_name = metadata_handler.dir_name
 os.chdir(dir_name)
@@ -89,6 +92,10 @@ while True:
     # Get unit details and load data
     ############################################################
 
+    print()
+    print('======================================')
+    print()
+
     # If sort_file given, iterate through that, otherwise ask user
     continue_bool, electrode_num, num_clusters, clusters = \
             post_utils.get_electrode_details(
@@ -98,7 +105,7 @@ while True:
     # For all other continue_bools, if false, end iteration
     # That will return them to this one
     # At that point, if continue_bool is False, exit
-    if not continue_bool: exit()
+    if not continue_bool: break
 
     # Print out selections
     print('||| Electrode {}, Solution {}, Cluster {} |||'.\
@@ -265,11 +272,8 @@ while True:
     ############################################################  
     # Finally, save the unit to the HDF5 file
     ############################################################  
-    hf5.remove_node('/', 'sorted_units', recursive = True)
 
-    hf5.remove_node('/sorted_units', 'unit001', recursive = True)
-
-    continue_bool = this_descriptor_handler.save_unit(
+    continue_bool, unit_name = this_descriptor_handler.save_unit(
             unit_waveforms,
             unit_times,
             electrode_num,
@@ -277,7 +281,6 @@ while True:
             split_or_merge,
             )
 
-    table.flush()
     hf5.flush()
 
 
@@ -287,8 +290,18 @@ while True:
 # Sort unit_descriptor by unit_number
 # This will be needed if sort_table is used, as using sort_table
 # will add merge/split marked units first
-this_descriptor_handler.sort_table_and_saved_units()
+print('==== Sorting Units and writing Unit Descriptor ====\n')
+this_descriptor_handler.write_unit_descriptor_from_sorted_units()
+this_descriptor_handler.resort_units()
+hf5.flush()
 
+current_unit_table = this_descriptor_handler.table_to_frame()
+print()
+print('==== Unit Table ====\n')
+print(current_unit_table)
+
+
+print()
 print('== Post-processing exiting ==')
 # Close the hdf5 file
 hf5.close()

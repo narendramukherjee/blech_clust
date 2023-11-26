@@ -293,6 +293,7 @@ def generate_datashader_plot(
         f'{violations1:.1f} % (<1ms),'
         f'{len(unit_times)} total waveforms. \n') 
     ax.set_title(print_str)
+    plt.tight_layout()
 
     return violations1, violations2, fig, ax
 
@@ -341,6 +342,8 @@ def generate_violations_warning(
             proceed = True
         elif proceed_msg == 'n': 
             proceed = False
+    else:
+        proceed = False
     return continue_bool, proceed
 
 class unit_descriptor_handler():
@@ -415,7 +418,7 @@ class unit_descriptor_handler():
                         )
         if not continue_bool:
             print(':: Unit not saved ::')
-            return continue_bool
+            return continue_bool, None
 
         if '/sorted_units' not in self.hf5:
             self.hf5.create_group('/', 'sorted_units')
@@ -460,6 +463,7 @@ class unit_descriptor_handler():
         # Flush table and hf5
         unit_table.flush()
         self.hf5.flush()
+        return continue_bool, unit_name
 
     def get_saved_units_hashes(self,):
         """
@@ -588,20 +592,20 @@ class unit_descriptor_handler():
         # Rename units
         for row in metadata_table.iterrows():
             this_hash = row[1]['hash']
-            decoded_hash = this_hash.decode('utf-8')
-            self._rename_unit(this_hash, decoded_hash)
+            decoded_hash = abs(int(hash(this_hash)))
+            new_name = f'unit{decoded_hash:03d}'
+            self._rename_unit(this_hash, new_name)
         # This double step is necessary to avoid renaming conflicts
         for row in metadata_table.iterrows():
             this_hash = row[1]['hash']
             this_unit_number = row[1]['new_unit_number']
             this_unit_name = f'unit{this_unit_number:03d}'
-            decoded_hash = this_hash.decode('utf-8')
-            self._rename_unit(decoded_hash, this_unit_name)
+            self._rename_unit(this_hash, this_unit_name)
 
         # Update unit_descriptor table
-        self._write_unit_descriptor_from_sorted_units()
+        self.write_unit_descriptor_from_sorted_units()
 
-    def _write_unit_descriptor_from_sorted_units(self,):
+    def write_unit_descriptor_from_sorted_units(self,):
         """
         Generate unit descriptor table from metadata
         present in sorted units
@@ -747,7 +751,8 @@ class split_merge_signal:
                 self.split = False
 
     def check_split_sort_file(self):
-        if args.sort_file is not None:
+        if self.args.sort_file is not None:
+            sort_table = pd.read_csv(args.sort_file)
             split_element = sort_table.Split[this_descriptor_handler.counter]
             if not (split_element.strip() == ''):
                 self.split = True
