@@ -13,25 +13,73 @@ from utils.blech_utils import entry_checker, imp_metadata
 from utils import blech_waveforms_datashader
 from datetime import datetime
 
+class sort_file_handler():
+
+    def __init__(self, sort_file_path):
+        self.sort_file_path = sort_file_path
+        if sort_file_path is not None:
+            if not (sort_file_path[-3:] == 'csv'):
+                raise Exception("Please provide CSV file")
+            sort_table = pd.read_csv(sort_file_path)
+            sort_table.fillna('',inplace=True)
+            # Check when more than one cluster is specified
+            sort_table['len_cluster'] = \
+                    [len(re.findall('[0-9]+',str(x))) for x in sort_table.Cluster]
+            
+            # Get splits and merges out of the way first
+            sort_table.sort_values(
+                    ['len_cluster','Split'],
+                    ascending=False, inplace=True)
+            sort_table.reset_index(inplace=True)
+            sort_table['unit_saved'] = False
+            self.sort_table = sort_table
+
+            # Create generator for iterating through sort table
+            self.sort_table_gen = self.sort_table.iterrows()
+        else:
+            self.sort_table = None
+
+    def get_next_cluster(self):
+        """
+        Get the next cluster to process
+        """
+        try:
+            counter, next_row = next(self.sort_table_gen)
+        except StopIteration:
+            return None, None, None, None 
+
+        self.current_row = next_row
+
+        electrode_num = int(self.current_row.Chan)
+        num_clusters = int(self.current_row.Solution)
+        clusters = re.findall('[0-9]+',str(self.current_row.Cluster))
+        clusters = [int(x) for x in clusters]
+
+        return counter, electrode_num, num_clusters, clusters
+
+    def mark_current_unit_saved(self):
+        self.sort_table.loc[self.current_row.name,'unit_saved'] = True
+        # Write to disk
+        self.sort_table.to_csv(self.sort_file_path, index=False)
+        print('== Marked unit as saved ==')
+
 def cluster_check(x):
     clusters = re.findall('[0-9]+',x)
     return sum([i.isdigit() for i in clusters]) == len(clusters)
 
-def get_electrode_details(args, counter):
+def get_electrode_details(this_sort_file_handler):
     """
     Ask user for electrode number, number of clusters, and cluster numbers
     """
 
-    if args.sort_file is not None:
-        sort_table = pd.read_csv(args.sort_file)
-
-        if counter == len(sort_table):
-            return None, None, None
-
-        electrode_num = int(sort_table.Chan[counter])
-        num_clusters = int(sort_table.Solution[counter])
-        clusters = re.findall('[0-9]+',str(sort_table.Cluster[counter]))
-        clusters = [int(x) for x in clusters]
+    if this_sort_file_handler.sort_table is not None:
+        counter, electrode_num, num_clusters, clusters = \
+                this_sort_file_handler.get_next_cluster()
+        if counter is None:
+            return False, None, None, None
+        else:
+            continue_bool = True
+        print('== Got cluster number details from sort file ==')
 
     else:
         # Get electrode number from user
@@ -405,7 +453,7 @@ class unit_descriptor_handler():
             unit_waveforms, 
             unit_times,
             electrode_num,
-            args,
+            this_sort_file_handler,
             split_or_merge,
             ):
         """
@@ -413,7 +461,7 @@ class unit_descriptor_handler():
         """
         continue_bool, unit_properties = \
                 self.get_unit_properties(
-                        args,
+                        this_sort_file_handler,
                         split_or_merge,
                         )
         if not continue_bool:
@@ -629,24 +677,22 @@ class unit_descriptor_handler():
         table.flush()
         self.hf5.flush()
 
-    def get_unit_properties(self, args, split_or_merge):
+    def get_unit_properties(self, this_sort_file_handler, split_or_merge):
         """
         Ask user for unit properties and save in both unit_descriptor table
         and sorted_units directory in HDF5 file
         """
 
-        #unit_description = dict(
-        #        zip(self.table.colnames, self.table[self.counter]))
-        #unit_description['regular_spiking'] = 0
-        #unit_description['fast_spiking'] = 0
-
-        if (not split_or_merge) and (args.sort_file is not None):
-            single_unit_msg = sort_table.single_unit[self.counter]
+        # If unit has not been tampered with and sort_file is present
+        if (not split_or_merge) and \
+                (this_sort_file_handler.sort_table is not None):
+            dat_row = this_sort_file_handler.current_row
+            single_unit_msg = dat_row.single_unit
             if not (single_unit_msg.strip() == ''):
                 single_unit = True
 
                 # If single unit, check unit type
-                unit_type_msg = sort_table.Type[self.counter] 
+                unit_type_msg = dat_row.Type 
                 if unit_type_msg == 'r': 
                     unit_type = 'regular_spiking'
                 elif unit_type_msg == 'f': 
@@ -654,6 +700,9 @@ class unit_descriptor_handler():
                 #unit_description[unit_type] = 1
             else:
                 single_unit = False
+                unit_type = 'none'
+            continue_bool = True
+            print('== Got unit property details from sort file ==')
 
         else:
             single_unit_msg, continue_bool = entry_checker(\
@@ -686,6 +735,7 @@ class unit_descriptor_handler():
                 #unit_description[unit_type] = 1
             else:
                 unit_type = 'none'
+                continue_bool = True
 
         #unit_description['single_unit'] = int(single_unit)
         property_dict = dict(
@@ -717,16 +767,16 @@ class unit_descriptor(tables.IsDescription):
     hash = tables.StringCol(10)
 
 class split_merge_signal:
-    def __init__(self, clusters, args): 
+    def __init__(self, clusters, this_sort_file_handler): 
         """
         First check whether there are multiple clusters to merge
         If not, check whether there is a split/sort file
         If not, ask whether to split
         """
         self.clusters = clusters
-        self.args = args
+        self.this_sort_file_handler = this_sort_file_handler
         if not self.check_merge_clusters():
-            if not self.check_split_sort_file():
+            if self.check_split_sort_file() is None:
                 self.ask_split()
 
 
@@ -751,13 +801,13 @@ class split_merge_signal:
                 self.split = False
 
     def check_split_sort_file(self):
-        if self.args.sort_file is not None:
-            sort_table = pd.read_csv(args.sort_file)
-            split_element = sort_table.Split[this_descriptor_handler.counter]
-            if not (split_element.strip() == ''):
-                self.split = True
+        if self.this_sort_file_handler.sort_table is not None:
+            dat_row = self.this_sort_file_handler.current_row
+            if len(dat_row.Split) > 0:
+                self.split=True
             else:
-                self.split = False
+                self.split=False
+            print('== Got split details from sort file ==')
             return True
         else:
-            return False
+            return None

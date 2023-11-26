@@ -18,11 +18,6 @@ from utils import blech_waveforms_datashader
 from utils.blech_utils import entry_checker, imp_metadata
 import utils.blech_post_process_utils as post_utils
 
-#from importlib import reload
-#reload(post_utils)
-#this_descriptor_handler = post_utils.unit_descriptor_handler(hf5, data_dir)
-#self = this_descriptor_handler
-
 # Set seed to allow inter-run reliability
 # Also allows reusing the same sorting sheets across runs
 np.random.seed(0)
@@ -40,22 +35,18 @@ parser.add_argument('--sort-file', '-f', help = 'CSV with sorted units',
                     default = None)
 args = parser.parse_args()
 
-if args.sort_file is not None:
-    if not (args.sort_file[-3:] == 'csv'):
-        raise Exception("Please provide CSV file")
-    sort_table = pd.read_csv(args.sort_file)
-    sort_table.fillna('',inplace=True)
-    # Check when more than one cluster is specified
-    sort_table['len_cluster'] = \
-            [len(re.findall('[0-9]+',str(x))) for x in sort_table.Cluster]
-    
-    # Get splits and merges out of the way first
-    sort_table.sort_values(['len_cluster','Split'],ascending=False, inplace=True)
-    true_index = sort_table.index
-    sort_table.reset_index(inplace=True)
 
-#data_dir = '/home/abuzarmahmood/Desktop/blech_clust/pipeline_testing/test_data_handling/test_data/KM45_5tastes_210620_113227_new'
-#metadata_handler = imp_metadata([[],data_dir])
+data_dir = '/home/abuzarmahmood/Desktop/blech_clust/pipeline_testing/test_data_handling/test_data/KM45_5tastes_210620_113227_new'
+metadata_handler = imp_metadata([[],data_dir])
+from glob import glob
+sort_file_path = glob(os.path.join(data_dir, '*sorted*'))[0]
+args.sort_file = sort_file_path 
+
+from importlib import reload
+reload(post_utils)
+
+# Instantiate sort_file_handler
+this_sort_file_handler = post_utils.sort_file_handler(args.sort_file)
 
 if args.dir_name is not None: 
     metadata_handler = imp_metadata([[],args.dir_name])
@@ -98,9 +89,7 @@ while True:
 
     # If sort_file given, iterate through that, otherwise ask user
     continue_bool, electrode_num, num_clusters, clusters = \
-            post_utils.get_electrode_details(
-                    args, 
-                    this_descriptor_handler.counter)
+            post_utils.get_electrode_details(this_sort_file_handler)
 
     # For all other continue_bools, if false, end iteration
     # That will return them to this one
@@ -132,7 +121,9 @@ while True:
     # Get unit details and load data
     ############################################################
 
-    this_split_merge_signal = post_utils.split_merge_signal(clusters, args)
+    this_split_merge_signal = post_utils.split_merge_signal(
+            clusters, 
+            this_sort_file_handler,)
     split_or_merge = np.logical_or(this_split_merge_signal.split,
                                    this_split_merge_signal.merge)
 
@@ -277,9 +268,12 @@ while True:
             unit_waveforms,
             unit_times,
             electrode_num,
-            args,
+            this_sort_file_handler,
             split_or_merge,
             )
+
+    if continue_bool and (this_sort_file_handler.sort_table is not None):
+        this_sort_file_handler.mark_current_unit_saved()
 
     hf5.flush()
 
@@ -290,6 +284,7 @@ while True:
 # Sort unit_descriptor by unit_number
 # This will be needed if sort_table is used, as using sort_table
 # will add merge/split marked units first
+print()
 print('==== Sorting Units and writing Unit Descriptor ====\n')
 this_descriptor_handler.write_unit_descriptor_from_sorted_units()
 this_descriptor_handler.resort_units()
