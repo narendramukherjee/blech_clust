@@ -212,6 +212,7 @@ while True:
         # Generate plot showing merged units in different colors
         post_utils.plot_merged_units(
                 subcluster_waveforms,
+                chosen_split,
                 max_n_per_cluster = 1000,
                 sd_bound = 1,
                 )
@@ -237,8 +238,8 @@ while True:
         ## Merge Sequence 
         ##############################
         # If the chosen units are going to be merged, merge them
-        cluster_inds = [np.where(predictions == int(cluster))[0] \
-                for cluster in clusters]
+        cluster_inds = [np.where(predictions == int(this_cluster))[0] \
+                for this_cluster in clusters]
 
         cluster_waveforms = [spike_waveforms[cluster, :] \
                 for cluster in cluster_inds]
@@ -258,6 +259,7 @@ while True:
         # Generate plot showing merged units in different colors
         post_utils.plot_merged_units(
                 cluster_waveforms,
+                clusters,
                 max_n_per_cluster = 1000,
                 sd_bound = 1,
                 )

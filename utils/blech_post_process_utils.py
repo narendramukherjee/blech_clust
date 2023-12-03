@@ -135,6 +135,9 @@ def load_data_from_disk(electrode_num, num_clusters):
 
 
 def gen_select_cluster_plot(electrode_num, num_clusters, clusters):
+    """
+    Generate plots for the clusters initially supplied by the user
+    """
     fig, ax = plt.subplots(len(clusters), 2)
     for cluster_num, cluster in enumerate(clusters):
         isi_plot = mpimg.imread(
@@ -164,6 +167,22 @@ def generate_cluster_plots(
         n_clusters, 
         this_cluster
         ):
+    """
+    Generate grid of plots for each cluster
+
+    Inputs:
+        split_predictions: array of cluster numbers for each split 
+        spike_waveforms: array of waveforms
+        spike_times: array of spike times
+        n_clusters: number of clusters
+        this_cluster: cluster number to plot
+
+
+    **NOTE**: This cluster specifies the cluster number in the original
+    clustering, not the split clustering. Split cluster numbers are
+    specified in split_predictions
+    **NOTE**: This is a stupid way of doing this.
+    """
 
     n_rows = int(np.ceil(np.sqrt(n_clusters)))
     n_cols = int(np.ceil(n_clusters/n_rows))
@@ -347,6 +366,7 @@ def generate_datashader_plot(
 
 def plot_merged_units(
         cluster_waveforms,
+        cluster_labels,
         max_n_per_cluster = 1000,
         sd_bound = 1,
         ):
@@ -355,8 +375,12 @@ def plot_merged_units(
 
     Inputs:
         cluster_waveforms: list of arrays (n_waveforms, n_samples)
+        cluster_labels: list of cluster labels
         max_n_per_cluster: maximum number of waveforms to plot per cluster
         sd_bound: number of standard deviations to plot for each cluster
+
+    Outputs:
+        fig, ax: figure and axis objects
     """
     mean_waveforms = [x.mean(axis=0) for x in cluster_waveforms]
     sd_waveforms = [x.std(axis=0) for x in cluster_waveforms]
@@ -372,7 +396,7 @@ def plot_merged_units(
     fig, ax = plt.subplots(1,1, figsize = (10,10))
     for i in range(n_clusters):
         inds = plot_inds[i]
-        ax.plot(mean_waveforms[i], color = cmap(i), label = f'Cluster {i}')
+        ax.plot(mean_waveforms[i], color = cmap(i), label = f'Cluster {cluster_labels[i]}')
         ax.fill_between(np.arange(len(mean_waveforms[i])),
                 mean_waveforms[i] - sd_bound*sd_waveforms[i],
                 mean_waveforms[i] + sd_bound*sd_waveforms[i],
