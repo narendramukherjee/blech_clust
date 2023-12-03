@@ -115,12 +115,25 @@ fig, ax = plt.subplots(len(plot_spike_trains), 2, figsize=(10, 10))
 for i in range(len(plot_spike_trains)):
     ax[i, 0].imshow(plot_spike_trains[i], aspect='auto', interpolation='none')
     ax[i, 1].imshow(zscore_binned_spike_trains[i], aspect='auto', interpolation='none')
-    ax[i, 0].set_title(f'Unit {i+1} Raw')
-    ax[i, 1].set_title(f'Unit {i+1} Zscored')
+    ax[i, 0].set_title(f'Unit {i} Raw')
+    ax[i, 1].set_title(f'Unit {i} Zscored')
     ax[i, 0].set_ylabel('Taste')
 fig.suptitle('Binned Spike Heatmaps \n' + basename + '\n' + 'Bin Size: ' + str(bin_size) + ' ms')
 plt.tight_layout()
 plt.savefig(os.path.join(output_dir, 'binned_spike_heatmaps.png'))
+plt.close()
+
+# Plot timeseries of above data as well
+fig, ax = plt.subplots(len(plot_spike_trains), 2, figsize=(10, 10))
+for i in range(len(plot_spike_trains)):
+    ax[i, 0].plot(np.array(plot_spike_trains[i]).T, alpha=0.7)
+    ax[i, 1].plot(zscore_binned_spike_trains[i].T, alpha=0.7)
+    ax[i, 0].set_title(f'Unit {i} Raw')
+    ax[i, 1].set_title(f'Unit {i} Zscored')
+    ax[i, 0].set_ylabel('Taste')
+fig.suptitle('Binned Spike Timeseries \n' + basename + '\n' + 'Bin Size: ' + str(bin_size) + ' ms')
+plt.tight_layout()
+plt.savefig(os.path.join(output_dir, 'binned_spike_timeseries.png'))
 plt.close()
 
 ##############################
