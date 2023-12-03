@@ -11,7 +11,7 @@ import shutil
 
 # Necessary blech_clust modules
 from utils import read_file
-from utils import qa_utils as qa
+from utils.qa_utils import channel_corr
 from utils.blech_utils import entry_checker, imp_metadata
 from utils.blech_process_utils import path_handler
 
@@ -199,11 +199,11 @@ print()
 print('Calculating correlation matrix for quality check')
 qa_down_rate = all_params_dict["qa_params"]["downsample_rate"]
 qa_threshold = all_params_dict["qa_params"]["bridged_channel_threshold"]
-down_dat_stack, chan_names = qa.get_all_channels(
+down_dat_stack, chan_names = channel_corr.get_all_channels(
         hdf5_name, 
         downsample_rate = qa_down_rate,)
-corr_mat = qa.intra_corr(down_dat_stack)
-qa.gen_corr_output(corr_mat, 
+corr_mat = channel_corr.intra_corr(down_dat_stack)
+channel_corr.gen_corr_output(corr_mat, 
                    dir_name, 
                    qa_threshold,)
 ##############################
