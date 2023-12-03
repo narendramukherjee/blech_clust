@@ -92,7 +92,6 @@ def gen_corr_output(corr_mat, plot_dir, threshold = 0.9):
 
 	# Also output a table with only the thresholded values
 	upper_thresh_corr = thresh_corr.copy()
-	upper_thresh_corr[np.tril_indices_from(upper_thresh_corr, k = 1)] = np.nan
 	# Convert to pd.DataFrame
 	inds = np.array(list(np.ndindex(upper_thresh_corr.shape)))
 	upper_thresh_frame = pd.DataFrame(
@@ -107,3 +106,17 @@ def gen_corr_output(corr_mat, plot_dir, threshold = 0.9):
 			os.path.join(plot_dir, 'raw_channel_corr_table.txt'),
 						   index = False, sep = '\t')
 
+	# If there are any channels with a correlation above the threshold,
+	# output a list of those channels to warnings.txt
+	warnings = upper_thresh_frame.loc[upper_thresh_frame['corr'] > threshold]
+	if len(warnings) > 0:
+		with open(os.path.join(plot_dir, 'warnings.txt'), 'a') as f:
+			print('', file = f)
+			f.write('=== Channel Correlation Warnings ===\n')
+			f.write('The following channels have a correlation above the threshold of {}:\n'.format(threshold))
+			f.write('Correlation Threshold: {}\n'.format(threshold))
+			print('', file = f)
+			f.write(warnings.to_string())
+			print('', file = f)
+			f.write('=== End Channel Correlation Warnings ===\n')
+			print('', file = f)

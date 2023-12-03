@@ -203,8 +203,11 @@ down_dat_stack, chan_names = channel_corr.get_all_channels(
         hdf5_name, 
         downsample_rate = qa_down_rate,)
 corr_mat = channel_corr.intra_corr(down_dat_stack)
+qa_out_path = os.path.join(dir_name, 'QA_output')
+if not os.path.exists(qa_out_path):
+    os.mkdir(qa_out_path)
 channel_corr.gen_corr_output(corr_mat, 
-                   dir_name, 
+                   qa_out_path, 
                    qa_threshold,)
 ##############################
 
