@@ -2,3 +2,4 @@ easygui==0.98.1
 joblib==1.0.0
 seaborn==0.11.2
 prefect==2.10.5
+pingouin
