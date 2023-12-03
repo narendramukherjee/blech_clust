@@ -151,9 +151,9 @@ def post_process(data_dir):
     raise_error_if_error(process,stderr,stdout)
 
 @task(log_prints=True)
-def units_similarity(data_dir):
-    script_name = 'blech_units_similarity.py'
-    process = Popen(["python", script_name, data_dir],
+def quality_assurance(data_dir):
+    script_name = 'blech_run_QA.sh'
+    process = Popen(["bash", script_name, data_dir],
                                stdout = PIPE, stderr = PIPE)
     stdout, stderr = process.communicate()
     raise_error_if_error(process,stderr,stdout)
@@ -295,7 +295,7 @@ def run_spike_test():
     run_jetstream_bash(data_dir)
     select_clusters(data_dir)
     post_process(data_dir)
-    units_similarity(data_dir)
+    quality_assurance(data_dir)
     units_plot(data_dir)
     make_arrays(data_dir)
     make_psth(data_dir)
