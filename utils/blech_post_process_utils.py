@@ -345,6 +345,47 @@ def generate_datashader_plot(
 
     return violations1, violations2, fig, ax
 
+def plot_merged_units(
+        cluster_waveforms,
+        max_n_per_cluster = 1000,
+        sd_bound = 1,
+        ):
+    """
+    Plot merged units
+
+    Inputs:
+        cluster_waveforms: list of arrays (n_waveforms, n_samples)
+        max_n_per_cluster: maximum number of waveforms to plot per cluster
+        sd_bound: number of standard deviations to plot for each cluster
+    """
+    mean_waveforms = [x.mean(axis=0) for x in cluster_waveforms]
+    sd_waveforms = [x.std(axis=0) for x in cluster_waveforms]
+
+    n_clusters = len(cluster_waveforms)
+    plot_inds = [
+            np.random.choice(np.arange(len(x)), 
+                             np.min([max_n_per_cluster, len(x)]),
+                             replace = False) \
+            for x in cluster_waveforms]
+
+    cmap = plt.cm.get_cmap('Set1')
+    fig, ax = plt.subplots(1,1, figsize = (10,10))
+    for i in range(n_clusters):
+        inds = plot_inds[i]
+        ax.plot(mean_waveforms[i], color = cmap(i), label = f'Cluster {i}')
+        ax.fill_between(np.arange(len(mean_waveforms[i])),
+                mean_waveforms[i] - sd_bound*sd_waveforms[i],
+                mean_waveforms[i] + sd_bound*sd_waveforms[i],
+                color = cmap(i), alpha = 0.2)
+        ax.plot(cluster_waveforms[i].T, color = cmap(i), alpha = 0.01)
+    ax.set_xlabel('Sample (30 samples / ms)')
+    ax.set_ylabel('Voltage (uV)')
+    ax.set_title('Merged units')
+    ax.legend()
+    plt.tight_layout()
+    
+    return fig, ax
+
 def delete_raw_recordings(hf5):
     """
     Delete raw recordings from hdf5 file

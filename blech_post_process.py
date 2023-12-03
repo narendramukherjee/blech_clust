@@ -143,10 +143,12 @@ while True:
         # 3 PCs, scaled energy, amplitude
         # Clusters is a list, and for len(clusters) == 1,
         # the code below will always work
-        this_cluster = np.where(predictions == int(clusters[0]))[0]
+        this_cluster_inds = np.where(predictions == int(clusters[0]))[0]
+        this_cluster_waveforms = spike_waveforms[this_cluster_inds]
+        this_cluster_times = spike_times[this_cluster_inds]
 
         data = post_utils.prepare_data(
-                            this_cluster,
+                            this_cluster_inds,
                             pca_slices,
                             energy,
                             amplitudes,
@@ -169,7 +171,7 @@ while True:
                             spike_waveforms, 
                             spike_times, 
                             n_clusters, 
-                            this_cluster)
+                            this_cluster_inds)
         else:
             split_predictions = []
             print("Solution did not converge "\
@@ -185,20 +187,19 @@ while True:
 
         # Once selections have been made, save data
         # Waveforms of originally chosen cluster
-        cluster_inds = np.where(predictions == int(clusters[0]))[0] 
-        fin_inds = np.concatenate(\
-                [np.where(split_predictions == this_split)[0] \
-                            for this_split in chosen_split])
+        subcluster_inds = [np.where(split_predictions == this_split)[0] \
+                            for this_split in chosen_split]
+        subcluster_waveforms = [this_cluster_waveforms[this_inds] \
+                for this_inds in subcluster_inds]
+        fin_inds = np.concatenate(subcluster_inds)
 
 
         ############################################################ 
-        unit_waveforms = spike_waveforms[cluster_inds, :]    
         # Subsetting this set of waveforms to include only the chosen split
-        unit_waveforms = unit_waveforms[fin_inds]
+        unit_waveforms = this_cluster_waveforms[fin_inds]
 
         # Do the same thing for the spike times
-        unit_times = spike_times[cluster_inds]
-        unit_times = unit_times[fin_inds] 
+        unit_times = this_cluster_times[fin_inds] 
         ############################################################ 
 
 
@@ -207,6 +208,12 @@ while True:
                 unit_waveforms, 
                 unit_times,
                 title = 'Merged Splits',
+                )
+        # Generate plot showing merged units in different colors
+        post_utils.plot_merged_units(
+                subcluster_waveforms,
+                max_n_per_cluster = 1000,
+                sd_bound = 1,
                 )
         plt.show()
 
@@ -230,11 +237,15 @@ while True:
         ## Merge Sequence 
         ##############################
         # If the chosen units are going to be merged, merge them
-        fin_inds = np.concatenate(\
-                [np.where(predictions == int(cluster))[0] \
-                for cluster in clusters])
+        cluster_inds = [np.where(predictions == int(cluster))[0] \
+                for cluster in clusters]
 
-        unit_waveforms = spike_waveforms[fin_inds, :]
+        cluster_waveforms = [spike_waveforms[cluster, :] \
+                for cluster in cluster_inds]
+
+        fin_inds = np.concatenate(cluster_inds)
+
+        unit_waveforms = spike_waveforms[fin_inds, :] 
         unit_times = spike_times[fin_inds]
 
         # Generate plot for merged unit
@@ -243,6 +254,14 @@ while True:
                 unit_times,
                 title = 'Merged Unit',
                 )
+
+        # Generate plot showing merged units in different colors
+        post_utils.plot_merged_units(
+                cluster_waveforms,
+                max_n_per_cluster = 1000,
+                sd_bound = 1,
+                )
+
         plt.show()
 
         # Warn the user about the frequency of ISI violations 
