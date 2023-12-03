@@ -206,6 +206,10 @@ corr_mat = channel_corr.intra_corr(down_dat_stack)
 qa_out_path = os.path.join(dir_name, 'QA_output')
 if not os.path.exists(qa_out_path):
     os.mkdir(qa_out_path)
+else:
+    # Delete dir and remake
+    shutil.rmtree(qa_out_path)
+    os.mkdir(qa_out_path)
 channel_corr.gen_corr_output(corr_mat, 
                    qa_out_path, 
                    qa_threshold,)
