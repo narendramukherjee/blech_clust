@@ -4,6 +4,11 @@ import numpy as np
 import tables
 import sys
 import os
+import pandas as pd
+# Get script path
+script_path = os.path.dirname(os.path.realpath(__file__))
+blech_path = os.path.dirname(os.path.dirname(script_path))
+sys.path.append(blech_path)
 from utils.blech_utils import imp_metadata
 from tqdm import tqdm
 from numba import jit
@@ -85,31 +90,51 @@ def unit_similarity_NM(all_spk_times):
 
 
 def parse_collision_mat(unit_distances, similarity_cutoff):
+    """
+    Parses the unit similarity matrix to find units that are too similar
+
+    Inputs:
+    unit_distances: matrix of unit similarity values
+    similarity_cutoff: similarity value above which units are considered
+
+    Outputs:
+    unique_pairs: list of tuples of unit numbers
+    unique_pairs_collisions: list of similarity values
+    """
     similar_units = list(zip(*np.where(unit_distances > similarity_cutoff)))
     # Remove same unit
     similar_units = [x for x in similar_units if x[0] != x[1]]
     # Remove flipped duplicates
     unique_pairs = []
+    unique_pairs_collisions = []
     for this_pair in similar_units:
         if this_pair not in unique_pairs \
                 and this_pair[::-1] not in unique_pairs:
             unique_pairs.append(this_pair)
-    return unique_pairs
+            unique_pairs_collisions.append(unit_distances[this_pair])
+    return unique_pairs, unique_pairs_collisions
 
 
-def write_out_similarties(unique_pairs):
-    # If the similarity goes beyond the defined cutoff,
-    # write these unit numbers to file
-    unit_similarity_violations = open("unit_similarity_violations.txt", "w")
-    print("Unit number 1" + "\t" + "Unit number 2",
-          file=unit_similarity_violations)
-    for this_pair in unique_pairs:
-        print(str(this_pair[0]) + "\t" +
-              str(this_pair[1]), file=unit_similarity_violations)
-    unit_similarity_violations.close()
+def write_out_similarties(unique_pairs, unique_pairs_collisions, out_path, mode='w'):
+    """
+    Writes out the unit similarity violations to a file
+
+    Inputs:
+    unique_pairs: list of tuples of unit numbers
+    unique_pairs_collisions: list of similarity values
+    out_path: path to write file to
+    mode: write mode (default is 'w')
+    """
+    # Generate dataframe with unit numbers and similarity
+    similarity_frame = pd.DataFrame(
+        {'unit1': [x[0] for x in unique_pairs],
+         'unit2': [x[1] for x in unique_pairs],
+         'similarity': unique_pairs_collisions})
+    # Write dataframe to file
+    with open(out_path, mode) as unit_similarity_violations:
+        print(similarity_frame.to_string(), file=unit_similarity_violations)
 
 ############################################################
-
 
 if __name__ == '__main__':
     # Get name of directory with the data files
@@ -117,6 +142,13 @@ if __name__ == '__main__':
     dir_name = metadata_handler.dir_name
     os.chdir(dir_name)
     print(f'Processing : {dir_name}')
+
+    output_dir = os.path.join(dir_name, 'QA_output')
+    if not os.path.isdir(output_dir):
+        os.mkdir(output_dir)
+
+    warnings_file_path = os.path.join(output_dir, 'warnings.txt')
+    out_path = os.path.join(output_dir, 'unit_similarity_violations.txt')
 
     params_dict = metadata_handler.params_dict
     similarity_cutoff = params_dict['similarity_cutoff']
@@ -138,10 +170,25 @@ if __name__ == '__main__':
     print("Similarity calculation starting")
     print(f"Similarity cutoff ::: {similarity_cutoff}")
     unit_distances = unit_similarity_abu(all_spk_times)
-    unique_pairs = parse_collision_mat(unit_distances, similarity_cutoff)
-    write_out_similarties(unique_pairs)
+    unique_pairs, unique_pairs_collisions = parse_collision_mat(unit_distances, similarity_cutoff)
+    write_out_similarties(unique_pairs, unique_pairs_collisions, out_path, mode='w')
     print("Similarity calculation complete, results being saved to file")
     print("==================")
+
+    # If the similarity goes beyond the defined cutoff,
+    # write these unit numbers to warnings file
+    if len(unique_pairs) > 0:
+        with open(warnings_file_path, 'a') as f:
+            print("", file=f)
+            print('=== Similarity cutoff warning ===', file=f)
+            print("Similarity cutoff exceeded for the following pairs of units",
+                  file=f)
+            print('Similarity cutoff ::: %f' % similarity_cutoff, file=f)
+            print("", file=f)
+        write_out_similarties(unique_pairs, unique_pairs_collisions, warnings_file_path, mode='a')
+        with open(warnings_file_path, 'a') as f:
+            print("", file=f)
+            print('=== End Similarity cutoff warning ===', file=f)
 
     # Make a node for storing unit distances under /sorted_units.
     # First try to delete it, and pass if it exists
