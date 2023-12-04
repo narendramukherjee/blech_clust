@@ -23,8 +23,8 @@ website at https://sites.google.com/a/brandeis.edu/katzlab/
 5. `python blech_post_process.py`  
     - Add selected units to HDF5 file for further processing  
 
-6. `python blech_units_similarity.py`  
-    - Check for collisions of spiketimes to assess double-counting of waveforms in clustering  
+6. `bash blech_run_QA.sh`  
+    - Run quality asurance steps: 1) spike-time collisions across units, 2) drift within units
 7. `python blech_units_plot.py`  
     - Plot waveforms of selected spikes  
 8. `python blech_make_arrays.py`  
