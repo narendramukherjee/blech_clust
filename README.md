@@ -52,7 +52,8 @@ pip install -r pip_requirements_base.txt            # Install pip requirements (
 - blech_clust_post.sh : Runs steps 7-14   
 
 ### Operations Workflow Visual 
-![update_outline](https://github.com/abuzarmahmood/blech_clust/assets/12436309/fb49e48e-adbe-4f21-bcd6-4e6813fa0082)
+![blech_clust_readme](https://github.com/abuzarmahmood/blech_clust/assets/12436309/7ff483da-7aa6-4f96-af64-3fbe3205c6ef)
+
 
 
 ### Example workflow
