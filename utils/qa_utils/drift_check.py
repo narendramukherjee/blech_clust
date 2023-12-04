@@ -322,7 +322,7 @@ if np.any(sig_p_val_vec):
     out_rows = p_val_frame.iloc[out_rows_inds]
 
     with open(warnings_file_path, 'a') as f:
-        print('=== Post-stimulus Warning ===', file=f)
+        print('=== Post-stimulus Drift Warning ===', file=f)
         print('Repeated measures ANOVA on post-stimulus firing rates across trial bins and tastes', file=f)
         print('Post-stimulus limits: ' + str(stim_t) + ' to ' + str(stim_t+trial_duration) + ' ms', file=f)
         print('Trial Bin Count: ' + str(n_trial_bins), file=f)
@@ -330,5 +330,5 @@ if np.any(sig_p_val_vec):
         print('\n', file=f)
         print(out_rows, file=f)
         print('\n', file=f)
-        print('=== End Post-stimulus Warning ===', file=f)
+        print('=== End Post-stimulus Drift Warning ===', file=f)
         print('\n', file=f)
