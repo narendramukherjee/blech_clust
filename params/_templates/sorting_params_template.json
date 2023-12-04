@@ -16,7 +16,15 @@
     "spike_snapshot_after": 1.5,
     "qa_params": {
         "downsample_rate": 100,
-        "bridged_channel_threshold" : 0.9
+        "bridged_channel_threshold" : 0.9,
+        "similarity_cutoff": 50,
+        "drift_params": {
+            "alpha": 0.05,
+            "n_trial_bins": 4, 
+            "baseline_duration": 1000,
+            "post_stim_duration": 2500,
+            "plot_bin_size": 1000
+        }
     },
     "psth_params": {
         "durations": [
@@ -27,7 +35,6 @@
         "step_size": 25
     },
     "sampling_rate": 30000,
-    "similarity_cutoff": 50,
     "spike_array_durations": [
         2000,
         5000

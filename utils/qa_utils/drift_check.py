@@ -94,6 +94,18 @@ spike_trains = get_spike_trains(metadata_handler.hdf5_name)
 ############################################################
 ## Perform Processing 
 ############################################################
+# Load params
+params_dict = metadata_handler.params_dict
+drift_params = params_dict['qa_params']['drift_params']
+
+alpha = drift_params['alpha'] 
+n_trial_bins = drift_params['n_trial_bins']
+stim_t = params_dict['spike_array_durations'][0]
+# Take period from stim_t - baseline_duration to stim_t
+baseline_duration = drift_params['baseline_duration'] 
+# Take period from stim_t to stim_t + trial_duration
+trial_duration = drift_params['post_stim_duration'] 
+bin_size = drift_params['plot_bin_size'] 
 
 ##############################
 ## Plot firing rate across session
@@ -103,7 +115,6 @@ unit_spike_trains = [np.swapaxes(x, 0, 1) for x in spike_trains]
 long_spike_trains = [x.reshape(x.shape[0],-1) for x in unit_spike_trains]
 
 # Bin data to plot
-bin_size = 1000
 binned_spike_trains = [np.reshape(x, (x.shape[0], -1, bin_size)).sum(axis=2) for x in long_spike_trains]
 
 # Group by neuron across tastes
@@ -139,12 +150,6 @@ plt.close()
 ##############################
 ## Perform ANOVA on baseline and post-stimulus firing rates separately
 ##############################
-alpha = 0.05
-
-n_trial_bins = 4
-stim_t = metadata_handler.params_dict['spike_array_durations'][0]
-baseline_duration = 1000 # Take period from stim_t - baseline_duration to stim_t
-trial_duration = 2500 # Take period from stim_t to stim_t + trial_duration
 
 ##############################
 # Baseline

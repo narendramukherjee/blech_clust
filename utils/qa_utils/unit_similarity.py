@@ -151,7 +151,7 @@ if __name__ == '__main__':
     out_path = os.path.join(output_dir, 'unit_similarity_violations.txt')
 
     params_dict = metadata_handler.params_dict
-    similarity_cutoff = params_dict['similarity_cutoff']
+    similarity_cutoff = params_dict['qa_params']['similarity_cutoff']
     sampling_rate = params_dict['sampling_rate']
     sampling_rate_ms = sampling_rate/1000.0
 
