@@ -454,6 +454,17 @@ class classifier_handler():
         self.pos_spike_dict = pos_spike_dict
         self.neg_spike_dict = neg_spike_dict
 
+        # Write out both prob and pred
+        out_dir = os.path.join(
+                self.data_dir, 
+                'spike_waveforms',
+                f'electrode{self.electrode_num:02}'
+                )
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        np.save(os.path.join(out_dir, 'clf_prob.npy'), clf_prob)
+        np.save(os.path.join(out_dir, 'clf_pred.npy'), clf_pred)
+
     def write_out_recommendations(self):
         """
         If number of predicted spikes > classifier_params['min_suggestion_count']
