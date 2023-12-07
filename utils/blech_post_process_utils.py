@@ -410,9 +410,16 @@ def plot_merged_units(
     
     return fig, ax
 
-def delete_raw_recordings(hf5):
+def delete_raw_recordings(hdf5_name):
     """
     Delete raw recordings from hdf5 file
+
+    Inputs:
+        hf5: hdf5 file object
+        hdf5_name: name of hdf5 file
+
+    Outputs:
+        hf5: new hdf5 file object
     """
 
     print('==============================')
@@ -420,21 +427,21 @@ def delete_raw_recordings(hf5):
     print()
 
     try:
-        hf5.remove_node('/raw', recursive = 1)
-        # And if successful, close the currently open hdf5 file and 
-        # ptrepack the file
-        hf5.close()
+        with tables.open_file(hdf5_name, 'r+') as hf5:
+            # Remove the raw recordings from the hdf5 file
+            hf5.remove_node('/raw', recursive = 1)
         print("Raw recordings removed")
         os.system("ptrepack --chunkshape=auto --propindexes --complevel=9 "
             "--complib=blosc " + hdf5_name + " " + hdf5_name[:-3] + "_repacked.h5")
         # Delete the old (raw and big) hdf5 file
         os.system("rm " + hdf5_name)
-        # And open the new, repacked file
-        hf5 = tables.open_file(hdf5_name[:-3] + "_repacked.h5", 'r+')
         print("File repacked")
+        print('==============================')
+        return True
     except:
         print("Raw recordings have already been removed, so moving on ..")
-    print('==============================')
+        print('==============================')
+        return False
 
 def generate_violations_warning(
         violations1,

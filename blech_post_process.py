@@ -54,7 +54,13 @@ dir_name = metadata_handler.dir_name
 os.chdir(dir_name)
 file_list = metadata_handler.file_list
 hdf5_name = metadata_handler.hdf5_name
+
+# Delete the raw node, if it exists in the hdf5 file, to cut down on file size
+repacked_bool = post_utils.delete_raw_recordings(hdf5_name)
+
 # Open the hdf5 file
+if repacked_bool:
+    hdf5_name = hdf5_name[:-3] + '_repacked.h5'
 hf5 = tables.open_file(hdf5_name, 'r+')
 
 ##############################
@@ -63,9 +69,6 @@ this_descriptor_handler = post_utils.unit_descriptor_handler(hf5, dir_name)
 
 # Clean up the memory monitor files, pass if clean up has been done already
 post_utils.clean_memory_monitor_data()  
-
-# Delete the raw node, if it exists in the hdf5 file, to cut down on file size
-post_utils.delete_raw_recordings(hf5)
 
 
 # Make the sorted_units group in the hdf5 file if it doesn't already exist
