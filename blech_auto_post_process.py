@@ -17,11 +17,13 @@ import pylab as plt
 import matplotlib.image as mpimg
 from sklearn.mixture import GaussianMixture
 from sklearn.mixture import BayesianGaussianMixture as BGM
+from sklearn.cluster import KMeans
 import argparse
 import pandas as pd
 import matplotlib
 from scipy.stats import chisquare
 from utils.blech_process_utils import gen_isi_hist
+from glob import glob
 
 matplotlib.rcParams['font.size'] = 6
 
@@ -54,13 +56,10 @@ args = parser.parse_args()
 # Instantiate sort_file_handler
 this_sort_file_handler = post_utils.sort_file_handler(args.sort_file)
 
-dir_name = '/home/abuzarmahmood/Desktop/blech_clust/pipeline_testing/test_data_handling/test_data/KM45_5tastes_210620_113227_new'
-metadata_handler = imp_metadata([[],dir_name])
-
-#if args.dir_name is not None: 
-#    metadata_handler = imp_metadata([[],args.dir_name])
-#else:
-#    metadata_handler = imp_metadata([])
+if args.dir_name is not None: 
+    metadata_handler = imp_metadata([[],args.dir_name])
+else:
+    metadata_handler = imp_metadata([])
 
 params_dict = metadata_handler.params_dict
 sampling_rate = params_dict['sampling_rate']
@@ -70,12 +69,24 @@ os.chdir(dir_name)
 file_list = metadata_handler.file_list
 hdf5_name = metadata_handler.hdf5_name
 
+# Since this needs classifier output to run, check if it exists
+clf_list = glob('./spike_waveforms/electrode*/clf_prob.npy')
+if len(clf_list) == 0:
+	pritn()
+	print('======================================')
+	print('Classifier output not found, please run blech_run_process.sh with classifier.')
+	print('======================================')
+	print()
+	exit()
+
 # Clean up the memory monitor files, pass if clean up has been done already
 post_utils.clean_memory_monitor_data()  
 # Delete the raw node, if it exists in the hdf5 file, to cut down on file size
-post_utils.delete_raw_recordings(hdf5_name)
+repacked_bool = post_utils.delete_raw_recordings(hdf5_name)
 
 # Open the hdf5 file
+if repacked_bool:
+    hdf5_name = hdf5_name[:-3] + '_repacked.h5'
 hf5 = tables.open_file(hdf5_name, 'r+')
 
 ##############################
@@ -160,6 +171,26 @@ for electrode_num in electrode_num_list:
 	# Perform clustering
 	############################################################
 
+	# Since the dirichlet process WILL find more clusters for more data,
+	# (whereas we know that more spikes doens't mean more neurons),
+	# we need to keep the "COUNT" constant
+	# One way to do this is to use KMeans centroids as data points
+
+	max_k = 1000
+	n_max_train = 10000
+	if len(data) > max_k:
+		kmean_obj = KMeans(n_clusters = max_k)	
+		if len(data) < n_max_train:
+			kmean_obj.fit(data)
+		else:
+			inds = np.random.choice(len(data), n_max_train, replace = False)
+			kmean_obj.fit(data[inds])
+		train_data = kmean_obj.cluster_centers_
+		kmeans_used = True
+	else:
+		train_data = data
+		kmeans_used = False
+
 	max_components = 10
 	g = BGM(
 			n_components = max_components,
@@ -172,27 +203,21 @@ for electrode_num in electrode_num_list:
 			weight_concentration_prior = 0.1,
 			verbose = 10,
 			)
-	n_max_train = 20000
-	if len(data) < n_max_train:
-		g.fit(data)
-	else:
-		inds = np.random.choice(len(data), n_max_train, replace = False)
-		g.fit(data[inds])
+
+	#n_max_train = 20000
+	#if len(data) < n_max_train:
+	#	g.fit(data)
+	#else:
+	#	inds = np.random.choice(len(data), n_max_train, replace = False)
+	#	g.fit(data[inds])
+
+	# Train on kmeans centroids but predict on the actual data
+	g.fit(train_data)
 	split_predictions = g.predict(data)
 
 	##############################	
 	# If any cluster has less than threshold weight, drop it
-	# weight_threshold = 0.05
 	cluster_weights = g.weights_
-	#wanted_clusters = np.where(cluster_weights > weight_threshold)[0]
-
-	#wanted_data_inds = np.where(np.in1d(split_predictions, wanted_clusters))[0]
-
-	## Get the waveforms and times for the wanted clusters
-	#wanted_waveforms = spike_waveforms[wanted_data_inds]
-	#wanted_times = spike_times[wanted_data_inds]
-	#split_predictions = split_predictions[wanted_data_inds]
-	#clf_prob = clf_prob[wanted_data_inds]
 
 	# Plot cluster weights as bars along with threshold
 	fig, ax = plt.subplots(figsize = (5, 5))
