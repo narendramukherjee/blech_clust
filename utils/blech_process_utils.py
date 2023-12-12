@@ -3,6 +3,7 @@ import utils.clustering as clust
 # import subprocess
 from joblib import load
 from sklearn.mixture import GaussianMixture as gmm
+from sklearn.mixture import BayesianGaussianMixture as BGM
 from utils import blech_waveforms_datashader
 import subprocess
 from scipy.stats import zscore
@@ -12,11 +13,12 @@ import json
 import numpy as np
 import tables
 import os
+from glob import glob
 import shutil
 import matplotlib
 import pandas as pd
 matplotlib.use('Agg')
-from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import AgglomerativeClustering, KMeans
 from scipy.cluster.hierarchy import cut_tree, linkage, dendrogram
 from matplotlib.patches import ConnectionPatch
 
@@ -40,14 +42,31 @@ class cluster_handler():
 
     def __init__(self, params_dict,
                  data_dir, electrode_num, cluster_num,
-                 spike_set):
+                 spike_set, fit_type = 'manual'):
+        assert fit_type in ['manual', 'auto'], 'fit_type must be manual or auto'
+        self.check_classifier_data_exists(data_dir)
+
         self.params_dict = params_dict
         self.dat_thresh = 10e3
         self.data_dir = data_dir
         self.electrode_num = electrode_num
         self.cluster_num = cluster_num
         self.spike_set = spike_set
+        self.fit_type = fit_type
         self.create_output_dir()
+
+    def check_classifier_data_exists(self, data_dir):
+        clf_list = glob(os.path.join(
+            data_dir,
+            'spike_waveforms/electrode*/clf_prob.npy'))
+
+        if len(clf_list) == 0:
+            pritn()
+            print('======================================')
+            print('Classifier output not found, please run blech_run_process.sh with classifier.')
+            print('======================================')
+            print()
+            exit()
 
     def return_training_set(self, data):
         """
@@ -58,16 +77,51 @@ class cluster_handler():
                              int(np.min((data.shape[0], self.dat_thresh))))]
         return train_set
 
-    def fit_model(self, train_set, clusters):
+    def fit_manual_model(self, train_set, clusters):
         """
         Cluster waveforms
         """
         model = gmm(
             n_components=clusters,
-            max_iter=self.params_dict['num_iter'],
-            n_init=self.params_dict['num_restarts'],
-            tol=self.params_dict['thresh']).fit(train_set)
+            max_iter=self.params_dict['clustering_params']['num_iter'],
+            n_init=self.params_dict['clustering_params']['num_restarts'],
+            tol=self.params_dict['clustering_params']['thresh'],
+            ).fit(train_set)
         return model
+
+    def fit_auto_model(self, train_set, clusters):
+        """
+        Since the dirichlet process WILL find more clusters for more data,
+        (whereas we know that more spikes doens't mean more neurons),
+        we need to keep the "COUNT" constant
+        One way to do this is to use KMeans centroids as data points
+        """
+
+        max_k = 1000
+
+        if len(train_set) > max_k:
+            kmean_obj = KMeans(n_clusters = max_k)	
+            kmean_obj.fit(train_set)
+            bgm_train_data = kmean_obj.cluster_centers_
+        else:
+            bgm_train_data = train_set
+
+        g = BGM(
+                n_components=clusters,
+                max_iter=self.params_dict['clustering_params']['num_iter'],
+                n_init=self.params_dict['clustering_params']['num_restarts'],
+                tol=self.params_dict['clustering_params']['thresh'],
+                covariance_type = 'full',
+                weight_concentration_prior_type = 'dirichlet_process',
+                # This can be systematically adjusted to match
+                # actual data
+                weight_concentration_prior = 0.1,
+                verbose = 10,
+                )
+
+        # Train on kmeans centroids but predict on the actual data
+        g.fit(bgm_train_data)
+        return g
 
     def get_cluster_labels(self, data, model):
         """
@@ -75,10 +129,14 @@ class cluster_handler():
         """
         return model.predict(data)
 
-    def perform_prediction(self):
+    def perform_prediction(self): 
         full_data = self.spike_set.spike_features
         train_set = self.return_training_set(full_data)
-        model = self.fit_model(train_set, self.cluster_num)
+        if self.fit_type == 'manual':
+            model = self.fit_manual_model(train_set, self.cluster_num)
+        elif self.fit_type == 'auto':
+            model = self.fit_auto_model(train_set, self.cluster_num)
+            self.cluster_weights = model.weights_
         labels = self.get_cluster_labels(full_data, model)
         self.labels = labels
 
@@ -124,6 +182,12 @@ class cluster_handler():
             f'{self.electrode_num:02}',
             f'clusters{self.cluster_num}'
         )
+        # elif self.fit_type == 'auto':
+        #     clust_plot_dir = os.path.join(
+        #         self.data_dir,
+        #         'Plots',
+        #         f'{self.electrode_num:02}',
+        #     )
         ifisdir_rmdir(clust_results_dir)
         ifisdir_rmdir(clust_plot_dir)
         os.makedirs(clust_results_dir)
@@ -310,6 +374,26 @@ class cluster_handler():
                     self.clust_plot_dir, f'no_spikes_Cluster{cluster}')
                 with open(file_path, 'w') as file_connect:
                     file_connect.write('')
+
+    # def create_auto_output_plots(self,
+    #                         params_dict):
+
+    #     slices_dejittered = self.spike_set.slices_dejittered
+    #     times_dejittered = self.spike_set.times_dejittered
+    #     standard_data = self.spike_set.spike_features
+    #     feature_names = self.spike_set.feature_names
+    #     threshold = self.spike_set.threshold
+
+    #     subcluster_inds = [np.where(self.labels == this_split)[0] \
+    #             for this_split in np.unique(self.labels)]
+    #     subcluster_waveforms = [slices_dejittered[this_inds] \
+    #             for this_inds in subcluster_inds]
+    #     subcluster_times = [spike_times[this_inds] \
+    #             for this_inds in subcluster_inds]
+    #     subcluster_prob = [clf_prob[this_inds] \
+    #             for this_inds in subcluster_inds]
+    #     mean_waveforms = [np.mean(this_waveform, axis = 0) for this_waveform in subcluster_waveforms]
+    #     std_waveforms = [np.std(this_waveform, axis = 0) for this_waveform in subcluster_waveforms]
 
 
 class classifier_handler():
@@ -576,9 +660,10 @@ class classifier_handler():
         # Don't need multiple restarts, this is just for visualization, not actual clustering
         gmm_model = gmm(
             n_components=5,
-            max_iter=self.params_dict['num_iter'],
+            max_iter=self.params_dict['clustering_params']['num_iter'],
             n_init=1,
-            tol=self.params_dict['thresh']).fit(noise_transformed_train)
+            tol=self.params_dict['clustering_params']['thresh']
+            ).fit(noise_transformed_train)
         predictions = gmm_model.predict(noise_transformed)
 
         clust_num = len(np.unique(predictions))

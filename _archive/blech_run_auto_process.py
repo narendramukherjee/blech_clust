@@ -329,18 +329,18 @@ for electrode_num in electrode_num_list:
 	############################################################ 
 	# Subsetting this set of waveforms to include only the chosen split
 
-	for this_sub in range(len(subcluster_waveforms)):
-		if fin_bool[this_sub]:
-			continue_bool, unit_name = this_descriptor_handler.save_unit(
-					subcluster_waveforms[this_sub],
-					subcluster_times[this_sub],
-					electrode_num,
-					this_sort_file_handler,
-					split_or_merge = None,
-					override_ask = True,
-					)
+	# for this_sub in range(len(subcluster_waveforms)):
+	# 	if fin_bool[this_sub]:
+	# 		continue_bool, unit_name = this_descriptor_handler.save_unit(
+	# 				subcluster_waveforms[this_sub],
+	# 				subcluster_times[this_sub],
+	# 				electrode_num,
+	# 				this_sort_file_handler,
+	# 				split_or_merge = None,
+	# 				override_ask = True,
+	# 				)
 
-	hf5.flush()
+	# hf5.flush()
 
 	print('==== {} Complete ===\n'.format(unit_name))
 	print('==== Iteration Ended ===\n')
