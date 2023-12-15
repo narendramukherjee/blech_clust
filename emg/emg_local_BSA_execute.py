@@ -5,6 +5,27 @@ import numpy as np
 import easygui
 import os
 import sys
+import datetime
+
+class Logger(object):
+    def __init__(self, log_file_path):
+        self.terminal = sys.stdout
+        self.log = open(log_file_path, "a")
+
+    def append_time(self, message):
+        now = str(datetime.datetime.now())
+        ap_msg = f'[{now}] {message}'
+        return ap_msg
+
+    def write(self, message):
+        ap_msg = self.append_time(message)
+        self.terminal.write(ap_msg)
+        self.log.write(ap_msg)  
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()  
+
 
 # Read blech.dir, and cd to that directory. 
 with open('BSA_run.dir', 'r') as f:
@@ -13,6 +34,7 @@ with open('BSA_run.dir', 'r') as f:
 # If there is more than one dir in BSA_run.dir,
 # loop over both, as both sets will have the same number of trials
 for dir_name in dir_list: 
+    sys.stdout = Logger(os.path.join(dir_name, 'BSA_log.txt'))
     os.chdir(dir_name)
 
     # Read the data files
@@ -22,16 +44,12 @@ for dir_name in dir_list:
     # cd to emg_BSA_results
     os.chdir('emg_BSA_results')
 
-    # Get SGE_TASK_ID # - this will determine the taste+trial to be looked at
-    try:
-        task = int(os.getenv('SGE_TASK_ID'))
-    except:
-        # Alternatively, if running on jetstream (or personal computer) 
-        # using GNU parallel, get sys.argv[1]
-        task = int(sys.argv[1])
+    task = int(sys.argv[1])
 
     taste = int((task-1)/sig_trials.shape[-1])
     trial = int((task-1)%sig_trials.shape[-1])
+
+    print(f'Processing taste {taste}, trial {trial}')
 
     # Import R related stuff - use rpy2 for Python->R and pandas for R->Python
     # Needed for the next line to work on Anaconda. 
@@ -54,37 +72,35 @@ for dir_name in dir_list:
     ro.r.assign('t_r', t_r)
     ro.r('t = c(t_r)')
 
-    # Make arrays to store the posterior probabilities and frequencies of analysis
-    p = np.zeros((7000, 20))
-    omega = np.zeros(20)
-
     # Run BSA on trial 'trial' of taste 'taste' and assign the results to p and omega.
     input_data = emg_env[taste, trial, :]
     # Check that trial is non-zero, if it isn't, don't try to run BSA
-    if input_data.sum() == 0:
-        raise Exception('Input data is all zeros, BSA will not run')
-        exit()
+    if not any(np.isnan(input_data)):
 
-    Br = ro.r.matrix(input_data, nrow = 1, ncol = 7000)
-    ro.r.assign('B', Br)
-    ro.r('x = c(B[1,])')
+        Br = ro.r.matrix(input_data, nrow = 1, ncol = 7000)
+        ro.r.assign('B', Br)
+        ro.r('x = c(B[1,])')
 
-    # x is the data, 
-    # we scan periods from 0.1s (10 Hz) to 1s (1 Hz) in 20 steps. 
-    # Window size is 300ms. 
-    # There are no background functions (=0)
-    ro.r('r_local = BaSAR.local(x, 0.1, 1, 20, t, 0, 300)') 
-    #p_r = com.load_data('r_local')
-    p_r = r['r_local']
-    # r_local is returned as a length 2 object, 
-    # with the first element being omega and the second being the 
-    # posterior probabilities. These need to be recast as floats
-    r_p = np.array(p_r[1]).astype('float')
-    p[:, :] = r_p[:, :]
-    omega[:] = np.array(p_r[0]).astype('float')/(2.0*np.pi) 
+        # x is the data, 
+        # we scan periods from 0.1s (10 Hz) to 1s (1 Hz) in 20 steps. 
+        # Window size is 300ms. 
+        # There are no background functions (=0)
+        ro.r('r_local = BaSAR.local(x, 0.1, 1, 20, t, 0, 300)') 
+        p_r = r['r_local']
+        # r_local is returned as a length 2 object, 
+        # with the first element being omega and the second being the 
+        # posterior probabilities. These need to be recast as floats
+        p = np.array(p_r[1]).astype('float')
+        omega = np.array(p_r[0]).astype('float')/(2.0*np.pi) 
+        print(f'Taste {taste}, trial {trial} succesfully processed')
+
+    else:
+        print(f'NANs in taste {taste}, trial {trial}, BSA will also output NANs')
+        p = np.zeros((7000,20))
+        omega = np.zeros(20)
+        p[:] = np.nan
+        omega = np.nan
 
     # Save p and omega by taste and trial number
-    #np.save('taste%i_trial%i_p.npy' % (taste, trial), p)
-    #np.save('taste%i_trial%i_omega.npy' % (taste, trial), omega)
     np.save(f'taste{taste:02}_trial{trial:02}_p.npy', p)
     np.save(f'taste{taste:02}_trial{trial:02}_omega.npy', omega)

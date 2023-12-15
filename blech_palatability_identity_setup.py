@@ -7,24 +7,22 @@ import os
 import json
 import glob
 import itertools
-from scipy.stats import rankdata
-from scipy.stats import spearmanr
-from scipy.stats import pearsonr
-from scipy.stats import f_oneway
-from scipy.spatial.distance import cdist
-from scipy.stats import ttest_ind
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
-from sklearn.model_selection import LeavePOut
-from sklearn.model_selection import StratifiedShuffleSplit
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.decomposition import PCA
-from sklearn.naive_bayes import GaussianNB
-from sklearn.linear_model import LinearRegression
-from sklearn.isotonic import IsotonicRegression
-from sklearn import preprocessing
-from utils.blech_utils import (
-        imp_metadata,
-        )
+from utils.blech_utils import imp_metadata
+#from scipy.stats import rankdata
+#from scipy.stats import spearmanr
+#from scipy.stats import pearsonr
+#from scipy.stats import f_oneway
+#from scipy.spatial.distance import cdist
+#from scipy.stats import ttest_ind
+#from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
+#from sklearn.model_selection import LeavePOut
+#from sklearn.model_selection import StratifiedShuffleSplit
+#from sklearn.metrics.pairwise import cosine_similarity
+#from sklearn.decomposition import PCA
+#from sklearn.naive_bayes import GaussianNB
+#from sklearn.linear_model import LinearRegression
+#from sklearn.isotonic import IsotonicRegression
+#from sklearn import preprocessing
 
 print('Make sure you are in the **CORERCT ENVIRONMENT**')
 
@@ -157,26 +155,53 @@ hf5.create_array('/ancillary_analysis', 'laser_combination_d_l', unique_lasers)
 hf5.flush()
 
 ############################################################
+# Calculate firing rates
 
-for i in range(0, time - params[0] + params[1], params[1]):
-    for j in range(num_units):
-        for k in range(num_tastes):
-            unscaled_response[int(i/params[1]), j, num_trials*k:num_trials*(k+1)] = \
-                    np.mean(trains_dig_in[k].spike_array[
-                                                    :, 
-                                                    chosen_units[j], 
-                                                    i:i + params[0]], 
-                            axis = 1)
+def calc_rolling_rates(array, window_len = 250, step_len = 25):
+    """
+    Inputs:
+        array : 3D numpy array, (trials, neurons, time)
+        window_len : window length in ms
+        step_len : step length in ms
 
-# Now scale the responses by the maximum firing of each neuron in each trial, 
-# and save that in response
-for j in range(unscaled_response.shape[1]):
-    for k in range(unscaled_response.shape[2]):
-        # Remember to add 1 in the denominator - the max can be 0 sometimes
-        response[:, j, k] = unscaled_response[:, j, k]
+    Outputs:
+        array: 3d numpy array, (trials, neurons, bins)
+                bins = (time - window_len)//step_len
+    """
+    starts = np.arange(0, this_dat.shape[-1] - window_len + step_len, 
+            step = step_len)
+    ends = starts + window_len
+    bins = list(zip(starts, ends))
+    firing_rates = np.zeros((*array.shape[:-1], len(bins)))
+    for i, this_bin in enumerate(bins):
+        firing_rates[..., i] = \
+                array[..., this_bin[0]:this_bin[1]].sum(axis=-1)/(window_len/1000)
+    return firing_rates
 
-hf5.create_array('/ancillary_analysis', 'scaled_neural_response', response)
-hf5.create_array('/ancillary_analysis', 'unscaled_neural_response', unscaled_response)
+
+# Convert to arrays padded with nans
+dat_shapes = [x.spike_array[:].shape for x in trains_dig_in]
+array_size = np.max(np.stack(dat_shapes), axis=0)
+bin_count = (array_size[-1] - params[0] + params[1]) // params[1]
+array_size[-1] = bin_count
+unscaled_array = np.empty((num_tastes, *array_size))
+unscaled_array[:] = np.nan
+scaled_array = np.empty((num_tastes, *array_size))
+scaled_array[:] = np.nan
+
+for this_taste in range(num_tastes):
+    this_dat = trains_dig_in[this_taste].spike_array[:]
+    this_rates = calc_rolling_rates(
+            this_dat, params[0], params[1])
+    # Adding +1 to avoid division by 0
+    this_max_rate = this_rates.max(axis=(0,2)) + 1
+    this_scaled_rate = this_rates / this_max_rate[None,:,None]
+
+    unscaled_array[this_taste, :len(this_rates)] = this_rates
+    scaled_array[this_taste, :len(this_rates)] = this_scaled_rate
+
+hf5.create_array('/ancillary_analysis', 'scaled_neural_response', scaled_array)
+hf5.create_array('/ancillary_analysis', 'unscaled_neural_response', unscaled_array)
 
 hf5.close()
 

@@ -32,7 +32,12 @@ script_path = os.path.realpath(__file__)
 blech_clust_dir = os.path.dirname(os.path.dirname(script_path))
 
 # Read emg_env path
-with open(os.path.join(blech_clust_dir, 'params', 'env_params.json')) as f:
+env_params_path = os.path.join(blech_clust_dir, 'params', 'env_params.json')
+if not os.path.exists(env_params_path):
+    print('=== Environment params file not found. ===')
+    print('==> Please copy [[ blech_clust/params/_templates/env_params.json ]] to [[ blech_clust/params/env_params.json ]] and update as needed.')
+    exit()
+with open(env_params_path) as f:
     env_params = json.load(f)
 emg_env_path = env_params['emg_env']
 
@@ -119,8 +124,8 @@ def run_CAR(data_dir):
 
 @task(log_prints=True)
 def run_jetstream_bash(data_dir):
-    script_name = 'blech_clust_jetstream_parallel.sh'
-    process = Popen(["bash", script_name],
+    script_name = 'blech_run_process.sh'
+    process = Popen(["bash", script_name, data_dir],
                                stdout = PIPE, stderr = PIPE)
     stdout, stderr = process.communicate()
     raise_error_if_error(process,stderr,stdout)
@@ -146,9 +151,9 @@ def post_process(data_dir):
     raise_error_if_error(process,stderr,stdout)
 
 @task(log_prints=True)
-def units_similarity(data_dir):
-    script_name = 'blech_units_similarity.py'
-    process = Popen(["python", script_name, data_dir],
+def quality_assurance(data_dir):
+    script_name = 'blech_run_QA.sh'
+    process = Popen(["bash", script_name, data_dir],
                                stdout = PIPE, stderr = PIPE)
     stdout, stderr = process.communicate()
     raise_error_if_error(process,stderr,stdout)
@@ -290,7 +295,7 @@ def run_spike_test():
     run_jetstream_bash(data_dir)
     select_clusters(data_dir)
     post_process(data_dir)
-    units_similarity(data_dir)
+    quality_assurance(data_dir)
     units_plot(data_dir)
     make_arrays(data_dir)
     make_psth(data_dir)

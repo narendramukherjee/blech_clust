@@ -28,9 +28,9 @@ from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans, AgglomerativeClustering
 
 
-from xgboost import XGBClassifier
-#import shap
-from umap import UMAP
+#from xgboost import XGBClassifier
+##import shap
+#from umap import UMAP
 
 
 # TODO: Add function to check for and chop up segments with double peaks
@@ -178,6 +178,7 @@ trials = hf5.root.ancillary_analysis.trials[:]
 laser_cond_num = len(trials)
 unique_lasers = hf5.root.ancillary_analysis.laser_combination_d_l[:]
 
+# Pull out a specific channel
 num = 0
 dir_name = dir_list[num]
 
@@ -249,6 +250,12 @@ for this_ind in inds:
 
     segment_starts, segment_ends, segment_dat = extract_movements(
         this_trial_dat, size=200)
+
+    #plt.plot(this_trial_dat, linewidth=2)
+    #for this_start, this_end, this_dat in zip(segment_starts, segment_ends, segment_dat):
+    #    plt.plot(np.arange(this_start, this_end), this_dat,
+    #             linewidth = 5, alpha = 0.7)
+    #plt.show()
 
     (feature_array,
      feature_names,

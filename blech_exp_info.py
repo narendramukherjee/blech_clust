@@ -192,6 +192,11 @@ else:
                 dir_path + dig_in_list[i], dtype=np.dtype('uint16')))
             d_diff = np.diff(dig_inputs)
             start_ind = np.where(d_diff == 1)[0]
+            if len(start_ind) == 0:
+                print(f"== No deliveries detected for {dig_in_list[i]} ==")
+                print("== blech_clust is sad and can't work under these conditions ==")
+                print(f"== Please delete {dig_in_list[i]} and try again ==")
+                exit()
             dig_in_trials.append(int(len(start_ind)))
         indexed_digin_list = list(
             zip(np.arange(len(dig_in_list)), dig_in_list))
@@ -214,6 +219,11 @@ else:
         dig_in_trials = []
         for n_i in range(num_dig_ins):
             start_ind = np.where(d_diff == n_i + 1)[0]
+            if len(start_ind) == 0:
+                print(f"== No deliveries detected for {dig_in_list[i]} ==")
+                print("== blech_clust is sad and can't work under these conditions ==")
+                print(f"== Please delete {dig_in_list[i]} and try again ==")
+                exit()
             dig_in_trials.append(int(len(start_ind)))
         dig_in_print_str = "A total of " + str(num_dig_ins)
         dig_in_present_bool = num_dig_ins > 0

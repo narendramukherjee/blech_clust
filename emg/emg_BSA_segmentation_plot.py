@@ -10,9 +10,7 @@ import json
 import pandas as pd
 # Necessary blech_clust modules
 sys.path.append('..')
-from utils.blech_utils import (
-        imp_metadata,
-        )
+from utils.blech_utils import imp_metadata
 
 def create_grid_plots(array, array_name, plot_type = 'line'):
 
@@ -138,8 +136,6 @@ emg_BSA_results=hf5.root.emg_BSA_results.emg_BSA_results_final[:]
 
 # Reading single values from the hdf5 file seems hard, 
 # needs the read() method to be called
-#pre_stim=hf5.root.ancillary_analysis.pre_stim.read()
-#pre_stim = int(pre_stim)
 pre_stim = metadata_handler.params_dict["spike_array_durations"][0]
 # Also maintain a counter of the number of trials in the analysis
 
@@ -160,20 +156,13 @@ time_limits = [int(x) for x in params_dict['psth_params']['durations']]
 x = np.arange(gapes.shape[-1]) - pre_stim
 
 # Get the indices of x that need to be plotted based on the chosen time limits
-plot_indices = np.where((x >= time_limits[0])*(x <= time_limits[1]))[0]
+plot_indices = np.where((x >= -time_limits[0])*(x <= time_limits[1]))[0]
 
 tastes = info_dict['taste_params']['tastes']
-# Ask the user for the names of the tastes in the dataset
-#tastes = easygui.multenterbox(
-#        msg = 'Enter the names of the tastes used in the experiments', 
-#        fields = ['Taste{:d}'.format(i+1) for i in range(gapes.shape[1])])
 
-mean_gapes = gapes.mean(axis=-2)
-mean_ltps = ltps.mean(axis=-2)
+mean_gapes = np.nanmean(gapes, axis=-2)
+mean_ltps = np.nanmean(ltps, axis=-2)
 
-
-# TODO: If trials are uneven, mean plots aren't made for tastes with
-#       with fewer trials, likely due to average of NaNs. Needs fixing
 # Generate grid plots
 create_grid_plots(mean_gapes, 'mean_gapes')
 create_grid_plots(mean_ltps, 'mean_ltps')

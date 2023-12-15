@@ -16,6 +16,9 @@ import shutil
 import matplotlib
 import pandas as pd
 matplotlib.use('Agg')
+from sklearn.cluster import AgglomerativeClustering
+from scipy.cluster.hierarchy import cut_tree, linkage, dendrogram
+from matplotlib.patches import ConnectionPatch
 
 ############################################################
 # Define Functions
@@ -28,12 +31,7 @@ class path_handler():
         self.home_dir = os.getenv('HOME')
         file_path = os.path.abspath(__file__)
         blech_clust_dir =  ('/').join(file_path.split('/')[:-2])
-        blech_dir_path = os.path.join(blech_clust_dir, 'blech.dir')
-        with open(blech_dir_path, 'r') as f:
-            lines = f.readlines()
-        dir_name = lines[0][:-1]
         self.blech_clust_dir = blech_clust_dir
-        self.data_dir = dir_name
 
 class cluster_handler():
     """
@@ -282,9 +280,10 @@ class cluster_handler():
 
                 # Create ISI distribution plot
                 #############################
-                fig = gen_isi_hist(
+                fig, ax = gen_isi_hist(
                     times_dejittered,
                     cluster_points,
+                    params_dict['sampling_rate'],
                 )
                 fig.savefig(os.path.join(
                     self.clust_plot_dir, f'Cluster{cluster}_ISIs'))
@@ -390,13 +389,27 @@ class classifier_handler():
             raise Exception("Couldn't download model, please refer to '\
                     'blech_clust/README.md#setup for instructions")
 
+    @staticmethod
+    def return_waveform_classifier_params_path(blech_clust_dir):
+        """
+        Inner function for get_waveform_classifier_params
+        so that it can also be called externally
+        """
+        params_file_path = os.path.join(
+            blech_clust_dir,
+            'params',
+            'waveform_classifier_params.json')
+        # If params file doesn't exist, stop execution
+        if not os.path.exists(params_file_path):
+            print('=== Waveform Classifier Params file not found. ===')
+            print('==> Please copy [[ blech_clust/params/_templates/waveform_classifier_params.json ]] to [[ blech_clust/params/waveform_classifier_params.json ]] and update as needed.')
+            exit()
+        return params_file_path
+
     def get_waveform_classifier_params(self):
         this_path_handler = path_handler()
         self.blech_clust_dir = this_path_handler.blech_clust_dir
-        params_file_path = os.path.join(
-            self.blech_clust_dir,
-            'params',
-            'waveform_classifier_params.json')
+        params_file_path = self.return_waveform_classifier_params_path(self.blech_clust_dir)
         with open(params_file_path, 'r') as this_file:
             self.classifier_params = json.load(this_file)
 
@@ -441,6 +454,17 @@ class classifier_handler():
         self.pos_spike_dict = pos_spike_dict
         self.neg_spike_dict = neg_spike_dict
 
+        # Write out both prob and pred
+        out_dir = os.path.join(
+                self.data_dir, 
+                'spike_waveforms',
+                f'electrode{self.electrode_num:02}'
+                )
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        np.save(os.path.join(out_dir, 'clf_prob.npy'), clf_prob)
+        np.save(os.path.join(out_dir, 'clf_pred.npy'), clf_pred)
+
     def write_out_recommendations(self):
         """
         If number of predicted spikes > classifier_params['min_suggestion_count']
@@ -472,13 +496,14 @@ class classifier_handler():
                     df.loc[self.electrode_num, columns] = data
                 else:
                     # Append new data to df
-                    df = df.append(new_df)
+                    df = pd.concat([df, new_df]) 
                 # Write out updated frame
                 df.sort_index(inplace=True)
                 df[round_cols] = df[round_cols].round(3)
                 df.to_csv(out_file_path)
 
     def gen_plots(self):
+        # Create plot for predicted spikes
         fig = plt.figure(figsize=(5, 10))
         gs = fig.add_gridspec(3, 2,
                               width_ratios=(4, 1), height_ratios=(1, 1, 1),
@@ -488,9 +513,17 @@ class classifier_handler():
         ax1 = fig.add_subplot(gs[1, 0])
         ax2 = fig.add_subplot(gs[2, 0], sharex=ax1)
         hist_ax = fig.add_subplot(gs[1, 1], sharey=ax1)
-        x = np.arange(self.pos_spike_dict['waveforms'].shape[1])
-        ax0.plot(x, self.pos_spike_dict['waveforms']
+        waveform_data = self.pos_spike_dict['waveforms']
+        x = np.arange(waveform_data.shape[1])
+        # Adjust ylims to 8-SD of amplitudes to avoid domination
+        # by outliers
+        slice_mid = waveform_data.shape[1]//2
+        amp_sd = np.std(waveform_data[:,slice_mid])
+        amp_mean = np.mean(waveform_data[:,slice_mid])
+        amp_lims = [amp_mean - 8*amp_sd, amp_mean + 8*amp_sd]
+        ax0.plot(x, waveform_data
                  [::10].T, c='k', alpha=0.05)
+        ax0.set_ylim(amp_lims)
         ax1.scatter(self.pos_spike_dict['spiketimes'],
                     self.pos_spike_dict['prob'], s=1)
         ax1.set_ylim([0, 1.1])
@@ -509,6 +542,22 @@ class classifier_handler():
                                  f'{self.electrode_num}_pred_spikes.png'),
                     bbox_inches='tight')
         plt.close(fig)
+
+        # Create hierarchical clutstering plot for predicted spikes
+        data = trim_data(self.pos_spike_dict['waveforms'], 20000)
+        features = self.feature_pipeline.transform(data)
+        cut_label_array, map_dict, clust_range = \
+                perform_agg_clustering(
+                        features, 
+                        max_clusters = 4)
+        plot_waveform_dendogram(
+                data, 
+                cut_label_array, 
+                clust_range, 
+                map_dict,
+                plot_n = 1000,
+                save_path = os.path.join(self.plot_dir, 
+                             f'{self.electrode_num}_pred_spikes_dendogram.png'))
 
         # Cluster noise and plot waveforms + times on single plot
         # Pull out noise info
@@ -868,7 +917,7 @@ def gen_datashader_plot(
         x,
         downsample=False,
         threshold=threshold,
-        dir_name="Plots/" + "datashader_temp_el" + str(electrode_num))
+        dir_name="Plots/temp_plots/" + "datashader_temp_el" + str(electrode_num))
 
     ax.set_xlabel('Sample ({:d} samples per ms)'.
                   format(int(sampling_rate/1000)))
@@ -880,23 +929,29 @@ def gen_datashader_plot(
 def gen_isi_hist(
         times_dejittered,
         cluster_points,
+        sampling_rate,
+        ax = None,
 ):
-    fig = plt.figure()
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.get_figure()
+
     cluster_times = times_dejittered[cluster_points]
     ISIs = np.ediff1d(np.sort(cluster_times))
-    ISIs = ISIs/30.0
+    ISIs = ISIs/(sampling_rate / 1000)
     max_ISI_val = 20
     bin_count = 100
     neg_pos_ISI = np.concatenate((-1*ISIs, ISIs), axis=-1)
-    hist_obj = plt.hist(
+    hist_obj = ax.hist(
         neg_pos_ISI,
         bins=np.linspace(-max_ISI_val, max_ISI_val, bin_count))
-    plt.xlim([-max_ISI_val, max_ISI_val])
+    ax.set_xlim([-max_ISI_val, max_ISI_val])
     # Scale y-lims by all but the last value
     upper_lim = np.max(hist_obj[0][:-1])
     if upper_lim:
-        plt.ylim([0, upper_lim])
-    plt.title("2ms ISI violations = %.1f percent (%i/%i)"
+        ax.set_ylim([0, upper_lim])
+    ax.set_title("2ms ISI violations = %.1f percent (%i/%i)"
               % ((float(len(np.where(ISIs < 2.0)[0])) /
                   float(len(cluster_times)))*100.0,
                  len(np.where(ISIs < 2.0)[0]),
@@ -905,7 +960,9 @@ def gen_isi_hist(
               % ((float(len(np.where(ISIs < 1.0)[0])) /
                   float(len(cluster_times)))*100.0,
                  len(np.where(ISIs < 1.0)[0]), len(cluster_times)))
-    return fig
+    ax.set_xlabel('ISI (ms)')
+    ax.set_ylabel('Count')
+    return fig, ax
 
 
 def remove_too_large_waveforms(
@@ -942,3 +999,179 @@ def feature_timeseries_plot(
     ax[-1].hist(this_spiketimes, bins=50)
     ax[-1].set_ylabel('Spiketime' + '\n' + 'Histogram')
     return fig, ax
+
+##############################
+# Agglomerative clustering helper functions
+##############################
+def register_labels(x,y):
+    """
+    Register labels from one level to the next
+    Input:
+        x: labels at level n
+        y: labels at level n+1
+    Output:
+        map_dict: dictionary mapping labels from level n to level n+1
+    """
+    unique_x = np.unique(x)
+    x_cluster_y = [np.unique(y[x==i]) for i in unique_x]
+    return dict(zip(unique_x, x_cluster_y))
+
+def calc_linkage(model):
+    """
+    Calculate linkage matrix from sklearn agglomerative clustering model
+    Input:
+        model: sklearn agglomerative clustering model
+    Output:
+        linkage_matrix: linkage matrix
+    """
+    # create the counts of samples under each node
+    counts = np.zeros(model.children_.shape[0])
+    n_samples = len(model.labels_)
+    for i, merge in enumerate(model.children_):
+        current_count = 0
+        for child_idx in merge:
+            if child_idx < n_samples:
+                current_count += 1  # leaf node
+            else:
+                current_count += counts[child_idx - n_samples]
+        counts[i] = current_count
+    linkage_matrix = np.column_stack(
+        [model.children_, model.distances_, counts]
+    ).astype(float)
+    return linkage_matrix
+
+# Resort mapping so that children are always in order
+def sort_label_array(label_array):
+    """
+    Resort map_dict so that children are always in order
+    We will need a remapping at every level
+
+    Input:
+        label_array: levels x samples
+
+    Output:
+        label_array: levels x samples
+    """
+    n_levels = label_array.shape[0]
+    level_pairs = list(zip(np.arange(n_levels-1), np.arange(1,n_levels)))
+    for x,y in level_pairs:
+        parent_labels = np.unique(label_array[x])
+        child_labels = np.unique(label_array[y])
+        child_map = {}
+        highest_so_far = 0
+        for this_parent in parent_labels:
+            this_child = label_array[y][label_array[x] == this_parent]
+            this_child = np.unique(this_child)
+            wanted_labels = np.arange(highest_so_far, highest_so_far + len(this_child))
+            highest_so_far = np.max(wanted_labels) + 1 
+            for i in range(len(this_child)):
+                child_map[this_child[i]] = wanted_labels[i]
+        # Remap
+        for i in range(len(label_array[y])):
+            label_array[y][i] = child_map[label_array[y][i]]
+    return label_array
+
+def perform_agg_clustering(features, max_clusters = 8):
+    """
+    Perform agglomerative clustering on features
+    Input:
+        features: samples x features
+        max_clusters: maximum number of clusters to consider
+    Output:
+        cut_label_array: levels x samples
+        map_dict: dictionary mapping labels from level n to level n+1
+        clust_range: range of clusters considered
+    """
+    clust_range = np.arange(1, max_clusters+1)
+    ward = AgglomerativeClustering(
+            distance_threshold =0, 
+            n_clusters = None, 
+            linkage="ward").fit(features)
+    linkage = calc_linkage(ward)
+    clust_label_list = [
+            cut_tree(
+                linkage, 
+                n_clusters = this_num
+                ).flatten()
+            for this_num in clust_range
+            ]
+
+    cut_label_array = np.stack(clust_label_list)
+    cut_label_array = sort_label_array(cut_label_array)
+
+    map_dict = {}
+    for i in range(len(clust_range)-1):
+        map_dict[i] = register_labels(
+                cut_label_array[i],
+                cut_label_array[i+1]
+                )
+    return cut_label_array, map_dict, clust_range
+
+def plot_waveform_dendogram(data, 
+                            cut_label_array, 
+                            clust_range, 
+                            map_dict,
+                            plot_n = 1000,
+                            save_path = None):
+    if save_path is None:
+        raise ValueError('Please provide a save path')
+    slice_mid = data.shape[1]//2
+    # Adjust ylims to 8-SD of amplitudes to avoid domination
+    # by outliers
+    amp_sd = np.std(data[:,slice_mid])
+    amp_mean = np.mean(data[:,slice_mid])
+    amp_lims = [amp_mean - 8*amp_sd, amp_mean + 8*amp_sd]
+    # Plot dendogram
+    fig,ax = plt.subplots(len(clust_range), np.max(clust_range)+1,
+                          figsize = (7,7), sharex = True, sharey = True)
+    for row in range(len(clust_range)):
+        center = int(np.max(clust_range)//2)
+        labels = cut_label_array.T[:,row]
+        unique_labels = np.unique(labels)
+        med_label = int(np.median(unique_labels))
+        ax_inds = unique_labels - med_label + center
+        parent_unique_labels = np.unique(cut_label_array.T[:,row-1])
+        parent_med_label = int(np.median(parent_unique_labels))
+        parent_ax_inds = parent_unique_labels - parent_med_label + center
+        ax[row,0].set_ylabel(f'{clust_range[row]} Clusters')
+        for x in unique_labels:
+            this_dat = data[labels==x] 
+            if len(this_dat) > plot_n:
+                plot_dat = this_dat[np.random.choice(len(this_dat), plot_n)]
+            else:
+                plot_dat = this_dat
+            ax[row, ax_inds[x]].plot(plot_dat.T,
+                color = 'k', alpha = 0.01)
+            ax[row, ax_inds[x]].set_ylim(amp_lims)
+        if row > 0: 
+            this_map = map_dict[row-1]
+            for key,val in this_map.items():
+                for child in val:
+                    con = ConnectionPatch(
+                            xyA = (slice_mid,0), coordsA = ax[row-1, parent_ax_inds[key]].transData,
+                            xyB = (slice_mid,0), coordsB = ax[row, ax_inds[child]].transData,
+                            arrowstyle = "-|>"
+                            )
+                    fig.add_artist(con)
+    # Remove box round each subplot
+    for ax0 in ax.flatten():
+        ax0.axis('off')
+    fig.suptitle('Predicted Waveform Dendogram')
+    fig.savefig(save_path, dpi = 300)
+    plt.close(fig)
+
+def trim_data(data, n_max = 20000):
+    """
+    Agglomerative clustering doesn't like large datasets
+    If we have more than n_max samples, we will randomly sample n_max samples
+    
+    Input:
+        data: samples x features
+        n_max: maximum number of samples to use
+
+    Output:
+        data: samples x features
+    """
+    if len(data) > n_max:
+        data = data[np.random.choice(len(data), n_max, replace = False)]
+    return data

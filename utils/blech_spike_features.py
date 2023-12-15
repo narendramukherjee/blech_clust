@@ -12,16 +12,12 @@ from utils.blech_process_utils import path_handler
 # Figure out paths
 path_handler = path_handler()
 blech_clust_dir = path_handler.blech_clust_dir
-data_dir_name = path_handler.data_dir
+#data_dir_name = path_handler.data_dir
 ############################################################
 
 sys.path.append(blech_clust_dir)
 from utils.blech_utils import imp_metadata
-metadata_handler = imp_metadata([[], data_dir_name])
 
-params_dict = metadata_handler.params_dict
-sampling_rate = params_dict['sampling_rate']
-zero_ind = int(params_dict['spike_snapshot_before']*sampling_rate/1000)
 
 class EnergyFeature(BaseEstimator, TransformerMixin):
     def __init__(self):
@@ -60,50 +56,57 @@ class AmpFeature(BaseEstimator, TransformerMixin):
 def zscore_custom(x):
     return zscore(x, axis=-1)
 
-
 zscore_transform = FunctionTransformer(zscore_custom)
 log_transform = FunctionTransformer(np.log, validate=True)
 arcsinh_transform = FunctionTransformer(np.arcsinh, validate=True)
 
 pca_components = 3
-
-pca_pipeline = Pipeline(
-    steps=[
-        ('zscore', zscore_transform),
-        ('pca', PCA(n_components=pca_components)),
-    ]
-)
-
-energy_pipeline = Pipeline(
-    steps=[
-        ('energy', EnergyFeature()),
-        ('log', log_transform),
-    ]
-)
-
-# use arcsinh_transform for amplitude due to negative values
-amplitude_pipeline = Pipeline(
-    steps=[
-        ('amplitude', AmpFeature(zero_ind)),
-        ('arcsinh', arcsinh_transform),
-    ]
-)
-
-collect_feature_pipeline = FeatureUnion(
-    n_jobs=1,
-    transformer_list=[
-        ('pca_features', pca_pipeline),
-        ('energy', energy_pipeline),
-        ('amplitude', amplitude_pipeline),
-    ]
-)
-
-feature_pipeline = Pipeline(
-    steps=[
-        ('get_features', collect_feature_pipeline),
-        ('scale_features', StandardScaler())
-    ]
-)
-
 feature_names = ['pca_{}'.format(i) for i in range(pca_components)] + \
                 ['energy', 'amplitude']
+
+def return_feature_pipeline(data_dir_name):
+    metadata_handler = imp_metadata([[], data_dir_name])
+    params_dict = metadata_handler.params_dict
+    sampling_rate = params_dict['sampling_rate']
+    zero_ind = int(params_dict['spike_snapshot_before']*sampling_rate/1000)
+
+
+    pca_pipeline = Pipeline(
+        steps=[
+            ('zscore', zscore_transform),
+            ('pca', PCA(n_components=pca_components)),
+        ]
+    )
+
+    energy_pipeline = Pipeline(
+        steps=[
+            ('energy', EnergyFeature()),
+            ('log', log_transform),
+        ]
+    )
+
+    # use arcsinh_transform for amplitude due to negative values
+    amplitude_pipeline = Pipeline(
+        steps=[
+            ('amplitude', AmpFeature(zero_ind)),
+            ('arcsinh', arcsinh_transform),
+        ]
+    )
+
+    collect_feature_pipeline = FeatureUnion(
+        n_jobs=1,
+        transformer_list=[
+            ('pca_features', pca_pipeline),
+            ('energy', energy_pipeline),
+            ('amplitude', amplitude_pipeline),
+        ]
+    )
+
+    feature_pipeline = Pipeline(
+        steps=[
+            ('get_features', collect_feature_pipeline),
+            ('scale_features', StandardScaler())
+        ]
+    )
+
+    return feature_pipeline

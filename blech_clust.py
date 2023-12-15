@@ -11,7 +11,7 @@ import shutil
 
 # Necessary blech_clust modules
 from utils import read_file
-from utils import qa_utils as qa
+from utils.qa_utils import channel_corr
 from utils.blech_utils import entry_checker, imp_metadata
 from utils.blech_process_utils import path_handler
 
@@ -19,6 +19,14 @@ from utils.blech_process_utils import path_handler
 script_path = os.path.realpath(__file__)
 blech_clust_dir = os.path.dirname(script_path)
 
+# Check that template file is present
+params_template_path = os.path.join(
+    blech_clust_dir,
+    'params/sorting_params_template.json')
+if not os.path.exists(params_template_path):
+    print('=== Sorting Params Template file not found. ===')
+    print('==> Please copy [[ blech_clust/params/_templates/sorting_params_template.json ]] to [[ blech_clust/params/sorting_params_template.json ]] and update as needed.')
+    exit()
 ############################################################
 
 metadata_handler = imp_metadata(sys.argv)
@@ -98,13 +106,13 @@ print('Created dirs in data folder')
 # Get lists of amplifier and digital input files
 if file_type == ['one file per signal type']:
     electrodes_list = ['amplifier.dat']
-    dig_in_list = ['digitalin.dat']
+    dig_in_file_list = ['digitalin.dat']
 elif file_type == ['one file per channel']:
     electrodes_list = [name for name in file_list if name.startswith('amp-')]
-    dig_in_list = [name for name in file_list if name.startswith('board-DI')]
+    dig_in_file_list = [name for name in file_list if name.startswith('board-DI')]
 
 electrodes_list = sorted(electrodes_list)
-dig_in_list = sorted(dig_in_list)
+dig_in_file_list = sorted(dig_in_file_list)
 
 # Use info file for port list calculation
 info_file = np.fromfile(dir_name + '/info.rhd', dtype=np.dtype('float32'))
@@ -117,7 +125,7 @@ num_recorded_samples = len(np.fromfile(
 total_recording_time = num_recorded_samples/sampling_rate  # In seconds
 
 check_str = f'Amplifier files: {electrodes_list} \nSampling rate: {sampling_rate} Hz'\
-    f'\nDigital input files: {dig_in_list} \n ---------- \n \n'
+    f'\nDigital input files: {dig_in_file_list} \n ---------- \n \n'
 print(check_str)
 
 ports = info_dict['ports']
@@ -128,16 +136,16 @@ if file_type == ['one file per channel']:
     # Read dig-in data
     # Pull out the digital input channels used,
     # and convert them to integers
-    dig_in = [x.split('-')[-1].split('.')[0] for x in dig_in_list]
-    dig_in = sorted([int(x) for x in dig_in])
+    dig_in_int = [x.split('-')[-1].split('.')[0] for x in dig_in_file_list]
+    dig_in_int = sorted([int(x) for x in dig_in_int])
 
 elif file_type == ['one file per signal type']:
 
     print("\tOne file per SIGNAL Detected")
-    dig_in = np.arange(info_dict['dig_ins']['count'])
+    dig_in_int = np.arange(info_dict['dig_ins']['count'])
 
 check_str = f'ports used: {ports} \n sampling rate: {sampling_rate} Hz'\
-            f'\n digital inputs on intan board: {dig_in}'
+            f'\n digital inputs on intan board: {dig_in_int}'
 
 print(check_str)
 
@@ -161,21 +169,17 @@ electrode_layout_frame = pd.read_csv(layout_path)
 
 # Read data files, and append to electrode arrays
 if file_type == ['one file per channel']:
-    read_file.read_digins(hdf5_name, dig_in, dig_in_list)
+    read_file.read_digins(hdf5_name, dig_in_int, dig_in_file_list)
     read_file.read_electrode_channels(hdf5_name, electrode_layout_frame)
     if len(emg_channels) > 0:
         read_file.read_emg_channels(hdf5_name, electrode_layout_frame)
 elif file_type == ['one file per signal type']:
-    read_file.read_digins_single_file(hdf5_name, dig_in, dig_in_list)
+    read_file.read_digins_single_file(hdf5_name, dig_in_int, dig_in_file_list)
     # This next line takes care of both electrodes and emgs
     read_file.read_electrode_emg_channels_single_file(
         hdf5_name, electrode_layout_frame, electrodes_list, num_recorded_samples, emg_channels)
 
 # Write out template params file to directory if not present
-print(blech_clust_dir)
-params_template_path = os.path.join(
-    blech_clust_dir,
-    'params/sorting_params_template.json')
 params_template = json.load(open(params_template_path, 'r'))
 # Info on taste digins and laser should be in exp_info file
 all_params_dict = params_template.copy()
@@ -195,16 +199,36 @@ print()
 print('Calculating correlation matrix for quality check')
 qa_down_rate = all_params_dict["qa_params"]["downsample_rate"]
 qa_threshold = all_params_dict["qa_params"]["bridged_channel_threshold"]
-down_dat_stack, chan_names = qa.get_all_channels(
+down_dat_stack, chan_names = channel_corr.get_all_channels(
         hdf5_name, 
         downsample_rate = qa_down_rate,)
-corr_mat = qa.intra_corr(down_dat_stack)
-qa.gen_corr_output(corr_mat, 
-                   dir_name, 
+corr_mat = channel_corr.intra_corr(down_dat_stack)
+qa_out_path = os.path.join(dir_name, 'QA_output')
+if not os.path.exists(qa_out_path):
+    os.mkdir(qa_out_path)
+else:
+    # Delete dir and remake
+    shutil.rmtree(qa_out_path)
+    os.mkdir(qa_out_path)
+channel_corr.gen_corr_output(corr_mat, 
+                   qa_out_path, 
                    qa_threshold,)
 ##############################
 
-# Dump shell file(s) for running GNU parallel job on the user's blech_clust folder on the desktop
+# Write single runner file to data directory
+script_save_path = os.path.join(dir_name, 'temp')
+if not os.path.exists(script_save_path):
+    os.mkdir(script_save_path)
+
+with open(os.path.join(script_save_path, 'blech_process_single.sh'), 'w') as f:
+    f.write('#!/bin/bash \n')
+    f.write(f'BLECH_DIR={blech_clust_dir} \n')
+    f.write(f'DATA_DIR={dir_name} \n')
+    f.write('ELECTRODE_NUM=$1 \n')
+    f.write('python $BLECH_DIR/blech_process.py $DATA_DIR $ELECTRODE_NUM \n')
+
+# Dump shell file(s) for running GNU parallel job on the user's 
+# blech_clust folder on the desktop
 # First get number of CPUs - parallel be asked to run num_cpu-1 threads in parallel
 num_cpu = multiprocessing.cpu_count()
 
@@ -216,28 +240,22 @@ not_emg_bool = not_none_bool.loc[
     ~not_none_bool.CAR_group.str.contains('emg')
 ]
 bash_electrode_list = not_emg_bool.electrode_ind.values
-job_count = np.min((len(bash_electrode_list), int(num_cpu-2)))
-runner_path = os.path.join(
-    blech_clust_dir, 'blech_clust_jetstream_parallel1.sh')
-f = open(os.path.join(blech_clust_dir, 'blech_clust_jetstream_parallel.sh'), 'w')
+job_count = np.min(
+        (
+            len(bash_electrode_list), 
+            int(num_cpu-2), 
+            all_params_dict["max_parallel_cpu"]
+            )
+        )
+f = open(os.path.join(script_save_path, 'blech_process_parallel.sh'), 'w')
+f.write('#!/bin/bash \n')
+f.write(f'DIR={dir_name} \n')
 print(f"parallel -k -j {job_count} --noswap --load 100% --progress " +
       "--memfree 4G --ungroup --retry-failed " +
-      f"--joblog {dir_name}/results.log " +
-      f"bash {runner_path} " +\
+      f"--joblog $DIR/results.log " +
+      "bash $DIR/temp/blech_process_single.sh " +\
       f"::: {' '.join([str(x) for x in bash_electrode_list])}",
       file=f)
-f.close()
-
-# Then produce the file that runs blech_process.py
-f = open(os.path.join(blech_clust_dir, 'blech_clust_jetstream_parallel1.sh'), 'w')
-print("export OMP_NUM_THREADS=1", file=f)
-blech_process_path = os.path.join(blech_clust_dir, 'blech_process.py')
-print(f"python {blech_process_path} $1", file=f)
-f.close()
-
-# Dump the directory name where blech_process has to cd
-f = open(os.path.join(blech_clust_dir, 'blech.dir'), 'w')
-print(dir_name, file=f)
 f.close()
 
 print('blech_clust.py complete \n')

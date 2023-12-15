@@ -14,7 +14,8 @@ import pandas as pd
 from tqdm import tqdm
 
 # Necessary blech_clust modules
-import read_file
+sys.path.append('../..')
+from utils import read_file
 
 # Get name of directory with the data files
 if len(sys.argv) > 1:

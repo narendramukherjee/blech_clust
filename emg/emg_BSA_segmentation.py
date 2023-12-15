@@ -5,6 +5,7 @@ import os
 import matplotlib.pyplot as plt
 import glob
 import sys
+import pandas as pd
 
 sys.path.append('..')
 from utils.blech_utils import imp_metadata
@@ -50,6 +51,7 @@ final_sig_trials_list = []
 final_emg_BSA_list = []
 
 for num, this_dir in enumerate(channels_discovered):
+    print(f'Processing {this_dir}')
     this_basename = channels_discovered[num]
     emg_BSA_results = [x[:] for x in \
             hf5.get_node('/emg_BSA_results',this_basename)._f_iter_nodes()\
@@ -72,8 +74,8 @@ for num, this_dir in enumerate(channels_discovered):
     sig_trials = np.load(f'emg_output/{this_basename}/sig_trials.npy').flatten()
 
     # Now arrange these arrays by 
-    # SHAPE : laser condition X taste X trial X time
-    final_emg_BSA_results = np.zeros((len(trials), 
+    # SHAPE : laser condition X taste X trial X time x freq
+    final_emg_BSA_results = np.zeros((  len(trials), 
                                         num_tastes, 
                                         int(num_trials/len(trials)),  
                                         emg_BSA_results.shape[1], 
@@ -94,15 +96,42 @@ for num, this_dir in enumerate(channels_discovered):
                                 int(num_trials/len(trials))), 
                             dtype = float)
 
-    # Fill up these arrays
-    for cond_num, this_trial_vec in enumerate(trials):
-        for trial_ind, trial_num in enumerate(this_trial_vec): 
-            taste_ind = trial_num // num_trials
-            mod_trial_ind = trial_num % num_trials
-            final_emg_BSA_results[cond_num, taste_ind, mod_trial_ind] = emg_BSA_results[trial_num] 
-            final_gapes[cond_num, taste_ind, mod_trial_ind] = gapes[trial_num] 
-            final_ltps[cond_num, taste_ind, mod_trial_ind] = ltps[trial_num] 
-            final_sig_trials[cond_num, taste_ind, mod_trial_ind] = sig_trials[trial_num] 
+    # Instead of messing around with weird indices, use dataframe to 
+    # keep track of tastes and laser conditions
+    trials_frame = pd.DataFrame(
+            data = dict(laser_cond = np.zeros(emg_BSA_results.shape[0]).astype('int'))
+            ) 
+    for cond_num, inds in enumerate(trials):
+        trials_frame.loc[inds, 'laser_cond'] = cond_num
+    trials_frame['taste'] = None
+    for taste_ind in range(num_tastes):
+        this_taste_trials = np.arange(num_trials*taste_ind, num_trials*(taste_ind+1))
+        trials_frame.loc[this_taste_trials, 'taste'] = taste_ind
+
+    unique_groups = trials_frame.groupby(['laser_cond','taste']).apply(lambda x : list(np.unique(x)))
+    unique_groups = unique_groups.reset_index()[['laser_cond','taste']]
+
+    # For each group, pull out trial inds
+    for _ , this_row in unique_groups.iterrows():
+        this_laser = this_row['laser_cond']
+        this_taste = this_row['taste']
+        query_out = trials_frame.query(f" laser_cond == {this_laser} and taste == {this_taste} ")
+        wanted_trial_inds = query_out.index.values
+
+        final_emg_BSA_results[this_laser, this_taste] = emg_BSA_results[wanted_trial_inds] 
+        final_gapes[this_laser, this_taste] = gapes[wanted_trial_inds] 
+        final_ltps[this_laser, this_taste] = ltps[wanted_trial_inds] 
+        final_sig_trials[this_laser, this_taste] = sig_trials[wanted_trial_inds] 
+
+    ## Fill up these arrays
+    #for cond_num, this_trial_vec in enumerate(trials):
+    #    for trial_ind, trial_num in enumerate(this_trial_vec): 
+    #        taste_ind = trial_num // num_trials
+    #        mod_trial_ind = trial_num % num_trials
+    #        final_emg_BSA_results[cond_num, taste_ind, mod_trial_ind] = emg_BSA_results[trial_num] 
+    #        final_gapes[cond_num, taste_ind, mod_trial_ind] = gapes[trial_num] 
+    #        final_ltps[cond_num, taste_ind, mod_trial_ind] = ltps[trial_num] 
+    #        final_sig_trials[cond_num, taste_ind, mod_trial_ind] = sig_trials[trial_num] 
 
     final_gapes_list.append(final_gapes)
     final_ltps_list.append(final_ltps)

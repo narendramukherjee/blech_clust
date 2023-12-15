@@ -1,5 +1,8 @@
-# Sets up emg data for running the envelope of emg recordings (env.npy) through a local Bayesian Spectrum Analysis (BSA). 
-# Needs an installation of R (installing Rstudio on Ubuntu is enough) - in addition, the R library BaSAR needs to be installed from the CRAN archives (https://cran.r-project.org/src/contrib/Archive/BaSAR/)
+# Sets up emg data for running the envelope of emg recordings (env.npy) through 
+# a local Bayesian Spectrum Analysis (BSA). 
+# Needs an installation of R (installing Rstudio on Ubuntu is enough) - 
+# in addition, the R library BaSAR needs to be installed from the CRAN 
+# archives (https://cran.r-project.org/src/contrib/Archive/BaSAR/)
 # This is the starting step for emg_local_BSA_execute.py
 
 # Import stuff
@@ -33,9 +36,15 @@ for num, dir_name in enumerate(dir_list):
 
     os.chdir(dir_name)
 
+    print('Deleting emg_BSA_results')
     if os.path.exists('emg_BSA_results'):
         shutil.rmtree('emg_BSA_results')
     os.makedirs('emg_BSA_results')
+
+    # Also delete log
+    print('Deleting results.log')
+    if os.path.exists('results.log'):
+        os.remove('results.log')
 
     # Load the data files
     #env = np.load('./emg_0/env.npy')
@@ -60,7 +69,7 @@ for num, dir_name in enumerate(dir_list):
             dir_name, 
             sig_trials.shape[0]*sig_trials.shape[1])
     print(
-            "parallel -k -j {:d} --noswap --load 100% --progress --joblog {:s}/results.log bash blech_emg_jetstream_parallel1.sh ::: {{1..{:d}}}".format(*format_args), 
+            "parallel -k -j {:d} --noswap --load 100% --progress --ungroup --joblog {:s}/results.log bash blech_emg_jetstream_parallel1.sh ::: {{1..{:d}}}".format(*format_args), 
             file = f)
     f.close()
 

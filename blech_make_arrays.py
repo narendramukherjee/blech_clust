@@ -7,9 +7,7 @@ import pandas as pd
 from tqdm import tqdm
 from utils.clustering import get_filtered_electrode
 from utils.blech_process_utils import return_cutoff_values
-from utils.blech_utils import (
-        imp_metadata,
-        )
+from utils.blech_utils import imp_metadata
 
 def get_dig_in_data(hf5):
     dig_in_nodes = hf5.list_nodes('/digital_in')
@@ -81,7 +79,7 @@ def create_laser_params_for_digin(
 
     if len(laser_digin_inds):
         selected_laser_digin = laser_digin_inds[0]
-        print(f'Processing laser from {dig_in_basename[selected_laser_digin]}')
+        print(f'Processing: laser from {dig_in_basename[selected_laser_digin]}')
 
         # Else run through the lasers and check if the lasers 
         # went off within 5 secs of the stimulus delivery time
@@ -146,6 +144,7 @@ if __name__ == '__main__':
     # Get name of directory with the data files
     metadata_handler = imp_metadata(sys.argv)
     os.chdir(metadata_handler.dir_name)
+    print(f'Processing: {metadata_handler.dir_name}')
 
     # Open the hdf5 file
     hf5 = tables.open_file(metadata_handler.hdf5_name, 'r+')
@@ -200,7 +199,7 @@ if __name__ == '__main__':
     if '/raw_emg' in hf5:
         raw_emg_electrodes = [x for x in hf5.get_node('/','raw_emg')]
     else:
-        raw_emg = []
+        raw_emg_electrodes = []
 
     all_electrodes = [raw_electrodes, raw_emg_electrodes] 
     all_electrodes = [x for y in all_electrodes for x in y]
@@ -310,7 +309,7 @@ if __name__ == '__main__':
         hf5.create_group('/', 'spike_trains')
 
         # Pull out spike trains
-        for i, this_dig_in in enumerate(taste_starts_cutoff): 
+        for i, this_dig_in in zip(taste_digin_inds, taste_starts_cutoff): 
             print(f'Creating spike-trains for {dig_in_basename[i]}')
             create_spike_trains_for_digin(
                     taste_starts_cutoff,
@@ -325,7 +324,7 @@ if __name__ == '__main__':
         print('No sorted units found...NOT MAKING SPIKE TRAINS')
 
     # Separate out laser loop
-    for i, this_dig_in in enumerate(taste_starts_cutoff): 
+    for i, this_dig_in in zip(taste_digin_inds, taste_starts_cutoff): 
         print(f'Creating laser info for {dig_in_basename[i]}')
         create_laser_params_for_digin(
                 i,
@@ -361,16 +360,20 @@ if __name__ == '__main__':
                 print('== EMG ARRAY WILL HAVE EMPTY TRIALS ==')
 
             # Shape : channels x dig_ins x max_trials x duration 
-            emg_data = np.ndarray((
+            emg_data = np.empty((
                 len(emg_pathname), 
                 len(taste_starts_cutoff), 
                 np.max(trial_counts), 
                 durations[0]+durations[1]))
 
+            # All data that will not get filled should be nan
+            emg_data[:] = np.nan
+
             # And pull out emg data into this array
             for i in range(len(emg_pathname)):
                 data = hf5.get_node(emg_pathname[i])[:]
-                for j, this_taste_digin in enumerate(taste_starts_cutoff):
+                for j, this_taste_digin in \
+                        zip(taste_digin_inds, taste_starts_cutoff):
                     for k, this_start in enumerate(this_taste_digin):
                         trial_bounds = [
                                 int(this_start - durations[0]*sampling_rate_ms),

@@ -22,10 +22,8 @@ info_dict = metadata_handler.info_dict
 hf5 = tables.open_file(metadata_handler.hdf5_name, 'r+')
 
 # Make directory to store the PSTH plots. Delete and remake the directory if it exists
-try:
+if os.path.exists('./overlay_PSTH'):
     os.system('rm -r '+'./overlay_PSTH')
-except:
-    pass
 os.mkdir('./overlay_PSTH')
 
 # Now ask the user to put in the identities of the digital inputs
@@ -42,12 +40,10 @@ params = [params_dict['psth_params']['window_size'],
             params_dict['psth_params']['step_size']]
 
 # Ask the user about the type of units they want to do the calculations on (single or all units)
-all_units = np.arange(trains_dig_in[0].spike_array.shape[1])
-chosen_units = all_units
+chosen_units = np.arange(trains_dig_in[0].spike_array.shape[1])
 
 # Extract neural response data from hdf5 file
-response = hf5.root.ancillary_analysis.scaled_neural_response[:]
-trial_count = int(response.shape[2]/len(trains_dig_in))
+response = hf5.root.ancillary_analysis.unscaled_neural_response[:]
 num_units = len(chosen_units)
 num_tastes = len(trains_dig_in)
 x = np.arange(0, 6751, params[1]) - 2000
@@ -62,7 +58,7 @@ for i in range(num_units):
             (chosen_units[i], params[0], params[1]))
     for j in plot_tastes_dig_in:
             plt.plot(x[plot_places], 
-                    1000*np.mean(response[plot_places, i, trial_count*j:trial_count*(j+1)], 
+                    np.nanmean(response[j, :, i, plot_places], 
                         axis = 1), label = identities[j])
     plt.legend()
     plt.xlabel('Time from taste delivery (ms)')
@@ -71,13 +67,21 @@ for i in range(num_units):
 
     # Second plot
     plt.subplot(122)
-    exec('waveforms = hf5.root.sorted_units.unit%03d.waveforms[:]' % (chosen_units[i]))
+    max_waveforms = 10000
+    waveforms = hf5.get_node(f'/sorted_units/unit{chosen_units[i]:03}','waveforms')[:]
+    orig_count = len(waveforms)
+    if orig_count > max_waveforms:
+        wav_inds = np.random.choice(np.arange(len(waveforms)), max_waveforms, replace=False)
+    else:
+        wav_inds = np.arange(len(waveforms))
+    waveforms = waveforms[wav_inds]
+    #exec('waveforms = hf5.root.sorted_units.unit%03d.waveforms[:]' % (chosen_units[i]))
     t = np.arange(waveforms.shape[1])
     plt.plot(t - 15, waveforms.T, linewidth = 0.01, color = 'red')
     plt.xlabel('Time (samples (30 per ms))')
     plt.ylabel('Voltage (microvolts)')
     title_str = f"Unit {chosen_units[i]}," \
-                f"Total waveforms = {waveforms.shape[0]}\n"\
+                f"Total waveforms = {orig_count}\n"\
                 f"Electrode: {hf5.root.unit_descriptor[chosen_units[i]]['electrode_number']},"\
                 f"Single Unit: {hf5.root.unit_descriptor[chosen_units[i]]['single_unit']},"\
                 f"RSU: {hf5.root.unit_descriptor[chosen_units[i]]['regular_spiking']},"\
@@ -89,6 +93,3 @@ for i in range(num_units):
 
 # Close hdf5 file
 hf5.close()
-
-
-
