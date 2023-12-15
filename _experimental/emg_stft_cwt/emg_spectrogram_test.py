@@ -58,6 +58,39 @@ def rolling_zscore(x,window):
     zscore[np.isnan(zscore)] = 0
     return zscore
 
+def calc_stft_mode_freq(dat, **stft_params, BSA_output = True):
+    """
+    Calculate the mode frequency of the STFT of a signal
+
+    Inputs:
+        dat : 1D array, signal to be analyzed
+        stft_params : dict, parameters for STFT calculation
+        BSA_output : bool, whether to output in a similar format to the BSA 
+
+    Outputs:
+        freq_vec : 1D array, frequency vector for STFT
+        t_vec : 1D array, time vector for STFT
+        weight_mean : 1D array, time averaged mode frequency
+    """
+    freq_vec, t_vec, stft  = calc_stft(dat, **stft_params)
+    mag = np.abs(stft)
+    time_norm_mag = mag / mag.sum(axis=0)
+    weight_mean = (freq_vec[:,None] * time_norm_mag).sum(axis=0)
+    if BSA_output:
+        # This is only needed if stft_step size > 1
+        # Interpolate output to same length as input
+        new_t_vec = np.arange(stft_params['time_range_tuple'][0],
+                              stft_params['time_range_tuple'][1],
+                              1/stft_params['Fs'])
+        new_weight_mean = np.interp(new_t_vec, t_vec, weight_mean)
+        new_freq = np.arange(0,10,0.5)
+        new_weight_mean = np.zeros((len(new_freq), len(t_vec)))
+        closest_freq = np.argmin(np.abs(weight_mean[:,None] - new_freq), axis=1)
+        new_weight_mean[closest_freq, np.arange(len(t_vec))] = 1
+        return new_freq, new_t_vec, new_weight_mean
+    else:
+        return freq_vec, t_vec, weight_mean
+
 
 # Ask for the directory where the data (emg_data.npy) sits
 dir_name = '/media/bigdata/firing_space_plot/NM_gape_analysis/raw_data/NM51_2500ms_161030_130155_new/emg_output/emg'
@@ -77,16 +110,17 @@ stft_params = dict(
         window_overlap = 399
         )
 
-dat = emg_env[0,1]
+dat = emg_env[0,0]
 x = np.arange(len(dat)) / 1000
 freq_vec, t_vec, stft  = calc_stft(dat, **stft_params)
 mag = np.abs(stft)
-max_mag = np.zeros(mag.shape)
-max_mag[np.argmax(mag, axis=0), np.arange(mag.shape[1])] = 1
-power = np.abs(stft)**2
-log_spectrum = 20*np.log10(np.abs(stft))
-time_norm_mag = mag / mag.sum(axis=0)
-weight_mean = (freq_vec[:,None] * time_norm_mag).sum(axis=0)
+# max_mag = np.zeros(mag.shape)
+# max_mag[np.argmax(mag, axis=0), np.arange(mag.shape[1])] = 1
+# power = np.abs(stft)**2
+# log_spectrum = 20*np.log10(np.abs(stft))
+# time_norm_mag = mag / mag.sum(axis=0)
+# weight_mean = (freq_vec[:,None] * time_norm_mag).sum(axis=0)
+freq_vec, t_vec, weight_mean = calc_stft_mode_freq(dat, **stft_params)
 fig,ax = plt.subplots(3,1, sharex=True)
 ax[0].plot(x, dat)
 ax[1].pcolormesh(t_vec, freq_vec, mag)
@@ -240,14 +274,15 @@ import matplotlib.pyplot as plt
 
 t_max = 100
 fs = 1000
+dt = 1/fs
 f_max = 10
 n_anchors = 20
 
 x_samples = np.arange(0, t_max*1.1, t_max/n_anchors)
 freq_samples = np.random.random(x_samples.shape) * 10 
 
-x = np.arange(0, t_max, 1/fs)
-dx = np.full_like(x, 1/fs)       # Change in x
+x = np.arange(0, t_max, dt)
+dx = np.full_like(x, dt)       # Change in x
 
 interpolation = interp1d(x_samples, freq_samples, kind='quadratic')
 freq = interpolation(x)
@@ -255,7 +290,22 @@ freq = interpolation(x)
 x_plot = (freq * dx).cumsum()    # Cumsum freq * change in x
 y = np.sin(x_plot)
 
+stft_params = dict(
+        max_freq = 20,
+        time_range_tuple = (0,t_max),
+        Fs = fs,
+        signal_window = 1000,
+        window_overlap = 950
+        )
+
+freq_vec, t_vec, weight_mean = calc_stft_mode_freq(y, **stft_params)
+
 plt.plot(x, y, label="sin(freq(x) * x)")
 plt.plot(x, freq, label="freq(x)")
+plt.plot(t_vec, weight_mean, label="Weighted Mean")
 plt.legend()
+plt.show()
+
+freq, t, stft = calc_stft(y, **stft_params)
+plt.pcolormesh(t, freq, np.abs(stft))
 plt.show()
