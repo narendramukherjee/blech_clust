@@ -15,6 +15,10 @@ parser.add_argument('-e', action = 'store_true',
                     help = 'Run EMG test only')
 parser.add_argument('-s', action = 'store_true',
                     help = 'Run spike sorting test only')
+parser.add_argument('--bsa', action = 'store_true',
+                    help = 'Run BSA test only')
+parser.add_argument('--all', action = 'store_true',
+                    help = 'Run all tests')
 args = parser.parse_args()
 
 def raise_error_if_error(process, stderr, stdout):
@@ -196,6 +200,14 @@ def overlay_psth(data_dir):
 ## EMG Only
 ############################################################
 @task(log_prints=True)
+def change_emg_freq_method(use_BSA = 1):
+    script_name = 'pipeline_testing/change_emg_freq_method.py'
+    process = Popen(["python", script_name, str(use_BSA)],
+                               stdout = PIPE, stderr = PIPE)
+    stdout, stderr = process.communicate()
+    raise_error_if_error(process,stderr,stdout)
+
+@task(log_prints=True)
 def cut_emg_trials(data_dir):
     script_name = 'pipeline_testing/cut_emg_trials.py'
     process = Popen(["python", script_name, data_dir],
@@ -220,10 +232,13 @@ def emg_local_BSA(data_dir):
     raise_error_if_error(process,stderr,stdout)
 
 @task(log_prints=True)
-def emg_jetstream_parallel(data_dir):
-    conda_init = 'conda run -p ' + emg_env_path
+def emg_jetstream_parallel(data_dir, use_emg_env = True):
     script_name = 'bash blech_emg_jetstream_parallel.sh'
-    full_str = ' '.join([conda_init, script_name])
+    if use_emg_env:
+        conda_init = 'conda run -p ' + emg_env_path
+        full_str = ' '.join([conda_init, script_name])
+    else:
+        full_str = script_name
     process = Popen(full_str, shell = True, stdout = PIPE, stderr = PIPE)
     stdout, stderr = process.communicate()
     raise_error_if_error(process,stderr,stdout)
@@ -317,9 +332,24 @@ def run_emg_main_test():
 
 @flow(log_prints=True)
 def run_emg_BSA_test():
+    os.chdir(blech_clust_dir)
+    # change_emg_freq_method needs to be in blech_clust_dir
+    change_emg_freq_method(use_BSA = 1)
     run_emg_main_test()
     emg_local_BSA(data_dir)
-    emg_jetstream_parallel(data_dir)
+    emg_jetstream_parallel(data_dir, use_emg_env = True)
+    local_BSA_post(data_dir)
+    BSA_segmentation(data_dir)
+    BSA_segmentation_plot(data_dir)
+
+@flow(log_prints=True)
+def run_emg_STFT_test():
+    os.chdir(blech_clust_dir)
+    # change_emg_freq_method needs to be in blech_clust_dir
+    change_emg_freq_method(use_BSA = 0)
+    run_emg_main_test()
+    emg_local_BSA(data_dir)
+    emg_jetstream_parallel(data_dir, use_emg_env = False)
     local_BSA_post(data_dir)
     BSA_segmentation(data_dir)
     BSA_segmentation_plot(data_dir)
@@ -353,6 +383,10 @@ def emg_only_test():
     except:
         print('Failed to run emg BSA test')
     try:
+        run_emg_STFT_test()
+    except:
+        print('Failed to run emg STFT test')
+    try:
         run_EMG_QDA_test()
     except:
         print('Failed to run EMG QDA test')
@@ -380,7 +414,7 @@ def full_test():
 ## Run Flows
 ############################################################
 # If no individual tests are required, run both
-if not args.e and not args.s:
+if args.all: 
     print('Running spike and emg tests')
     full_test(return_state=True)
 elif args.e:
@@ -389,3 +423,6 @@ elif args.e:
 elif args.s:
     print('Running spike-sorting tests only')
     spike_only_test(return_state=True)
+elif args.bsa:
+    print('Running BSA tests only')
+    run_emg_BSA_test(return_state=True)

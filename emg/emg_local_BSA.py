@@ -27,25 +27,32 @@ print(f'Processing : {data_dir}')
 ##############################
 # Setup params
 ##############################
-script_dir = os.path.dirname(os.path.realpath(__file__))
-blech_clust_dir = os.path.dirname(script_dir)
+# Get paths
+this_path_handler = path_handler()
+blech_clust_dir = this_path_handler.blech_clust_dir
+blech_emg_dir = os.path.join(blech_clust_dir ,'emg')
+print(f'blech_emg_dir: {blech_emg_dir}')
+
+print(f'blech_clust_dir: {blech_clust_dir}')
+print()
 emg_params_path = os.path.join(blech_clust_dir, 'params', 'emg_params.json')
 
 if not os.path.exists(emg_params_path):
-    print('=== Environment params file not found. ===')
-    print('==> Please copy [[ blech_clust/params/_templates/emg_params.json ]] to [[ blech_clust/params/env_params.json ]] and update as needed.')
+    print('=== EMG params file not found. ===')
+    print('==> Please copy [[ blech_clust/params/_templates/emg_params.json ]] to [[ blech_clust/params/emg_params.json ]] and update as needed.')
     exit()
 
 emg_params_dict = json.load(open(emg_params_path, 'r'))
 use_BSA_bool = emg_params_dict['use_BSA']
 
-
 emg_output_dir = os.path.join(data_dir, 'emg_output')
+print(f'emg_output_dir: {emg_output_dir}')
 # Get dirs for each emg CAR
 dir_list = glob(os.path.join(emg_output_dir,'emg*'))
 dir_list = [x for x in dir_list if os.path.isdir(x)]
 
 for num, dir_name in enumerate(dir_list): 
+    print(f'Processing {dir_name}')
     #if 'emg_channel' not in os.path.basename(dir_name[:-1]):
     if 'emg_env.npy' not in os.listdir(dir_name):
         raise Exception(f'emg_env.py not found for {dir_name}')
@@ -69,10 +76,6 @@ for num, dir_name in enumerate(dir_list):
     env = np.load('./emg_env.npy')
     sig_trials = np.load('./sig_trials.npy')
 
-    # Grab Brandeis unet username
-    this_path_handler = path_handler()
-    blech_clust_dir = this_path_handler.blech_clust_dir
-    blech_emg_dir = os.path.join(blech_clust_dir ,'emg')
 
     # Dump shell file(s) for running GNU parallel job on the 
     # user's blech_clust folder on the desktop
