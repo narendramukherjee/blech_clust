@@ -12,6 +12,7 @@ import multiprocessing
 import sys
 import shutil
 from glob import glob
+import json
 
 sys.path.append('..')
 from utils.blech_utils import imp_metadata
@@ -22,6 +23,22 @@ metadata_handler = imp_metadata(sys.argv)
 data_dir = metadata_handler.dir_name
 os.chdir(data_dir)
 print(f'Processing : {data_dir}')
+
+##############################
+# Setup params
+##############################
+script_dir = os.path.dirname(os.path.realpath(__file__))
+blech_clust_dir = os.path.dirname(script_dir)
+emg_params_path = os.path.join(blech_clust_dir, 'params', 'emg_params.json')
+
+if not os.path.exists(emg_params_path):
+    print('=== Environment params file not found. ===')
+    print('==> Please copy [[ blech_clust/params/_templates/emg_params.json ]] to [[ blech_clust/params/env_params.json ]] and update as needed.')
+    exit()
+
+emg_params_dict = json.load(open(emg_params_path, 'r'))
+use_BSA_bool = emg_params_dict['use_BSA']
+
 
 emg_output_dir = os.path.join(data_dir, 'emg_output')
 # Get dirs for each emg CAR
@@ -74,9 +91,15 @@ for num, dir_name in enumerate(dir_list):
     f.close()
 
     # Then produce the file that runs blech_process.py
+    if use_BSA_bool:
+        file_name = 'emg_local_BSA_execute.py'
+        print(' === Using BSA for frequency estimation ===')
+    else:
+        file_name = 'emg_local_STFT_execute.py'
+        print(' === Using STFT for frequency estimation ===')
     f = open(os.path.join(blech_emg_dir,'blech_emg_jetstream_parallel1.sh'), 'w')
     print("export OMP_NUM_THREADS=1", file = f)
-    print("python emg_local_BSA_execute.py $1", file = f)
+    print(f"python {file_name} $1", file = f)
     f.close()
 
     # Finally dump a file with the data directory's location (blech.dir)
