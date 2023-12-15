@@ -32,12 +32,12 @@ script_path = os.path.realpath(__file__)
 blech_clust_dir = os.path.dirname(os.path.dirname(script_path))
 
 # Read emg_env path
-env_params_path = os.path.join(blech_clust_dir, 'params', 'env_params.json')
-if not os.path.exists(env_params_path):
+emg_params_path = os.path.join(blech_clust_dir, 'params', 'emg_params.json')
+if not os.path.exists(emg_params_path):
     print('=== Environment params file not found. ===')
-    print('==> Please copy [[ blech_clust/params/_templates/env_params.json ]] to [[ blech_clust/params/env_params.json ]] and update as needed.')
+    print('==> Please copy [[ blech_clust/params/_templates/emg_params.json ]] to [[ blech_clust/params/env_params.json ]] and update as needed.')
     exit()
-with open(env_params_path) as f:
+with open(emg_params_path) as f:
     env_params = json.load(f)
 emg_env_path = env_params['emg_env']
 

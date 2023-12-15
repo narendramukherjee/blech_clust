@@ -11,6 +11,7 @@ import os
 import sys
 import datetime
 import scipy
+import json
 
 class Logger(object):
     def __init__(self, log_file_path):
@@ -90,20 +91,21 @@ def calc_stft_mode_freq(dat, BSA_output = True, **stft_params):
         return freq_vec, t_vec, weight_mean
 
 
-############################################################
-# Begin script 
-############################################################
-
 ##############################
 # Setup params
 ##############################
-stft_params = dict(
-        max_freq = 20,
-        time_range_tuple = (0,7),
-        Fs = 1000,
-        signal_window = 400,
-        window_overlap = 399
-        )
+script_dir = os.path.dirname(os.path.realpath(__file__))
+blech_clust_dir = os.path.dirname(script_dir)
+emg_params_path = os.path.join(blech_clust_dir, 'params', 'emg_params.json')
+
+if not os.path.exists(emg_params_path):
+    print('=== Environment params file not found. ===')
+    print('==> Please copy [[ blech_clust/params/_templates/emg_params.json ]] to [[ blech_clust/params/env_params.json ]] and update as needed.')
+    exit()
+
+emg_params_dict = json.load(open(emg_params_path, 'r'))
+stft_params = emg_params_dict['stft_params']
+
 
 ##############################
 # Calculate STFT 
