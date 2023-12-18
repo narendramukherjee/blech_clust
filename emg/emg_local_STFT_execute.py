@@ -47,13 +47,14 @@ def calc_stft(trial, max_freq,time_range_tuple,\
     f,t,this_stft = scipy.signal.stft(
                 scipy.signal.detrend(trial),
                 fs=Fs,
-                window='hann',
+                # window='hann', # don't specify window to avoid version issues
                 nperseg=signal_window,
                 noverlap=signal_window-(signal_window-window_overlap))
-    this_stft =  this_stft[np.where(f<max_freq)[0]]
+    freq_bool = f<=max_freq
+    this_stft =  this_stft[np.where(freq_bool)[0]]
     this_stft = this_stft[:,np.where((t>=time_range_tuple[0])*\
                                             (t<time_range_tuple[1]))[0]]
-    fin_freq = f[f<max_freq]
+    fin_freq = f[freq_bool]
     fin_t = t[np.where((t>=time_range_tuple[0])*(t<time_range_tuple[1]))]
     return  fin_freq, fin_t, this_stft
 
