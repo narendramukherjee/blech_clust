@@ -43,6 +43,7 @@ for dir_name in dir_list:
 
     # cd to emg_BSA_results
     os.chdir('emg_BSA_results')
+    print(f'Current directory: {os.getcwd()}')
 
     task = int(sys.argv[1])
 

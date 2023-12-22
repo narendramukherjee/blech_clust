@@ -29,6 +29,7 @@ num_tastes = emg_data.shape[1]
 # Load the unique laser duration/lag combos and the trials 
 # that correspond to them from the ancillary analysis node
 trials = hf5.root.ancillary_analysis.trials[:] # laser conditions x trials
+flat_trials = trials.flatten()
 unique_lasers = hf5.root.ancillary_analysis.laser_combination_d_l[:] # laser conditions x details
 
 # Iterate over channels
@@ -99,7 +100,8 @@ for num, this_dir in enumerate(channels_discovered):
     # Instead of messing around with weird indices, use dataframe to 
     # keep track of tastes and laser conditions
     trials_frame = pd.DataFrame(
-            data = dict(laser_cond = np.zeros(emg_BSA_results.shape[0]).astype('int'))
+            #data = dict(laser_cond = np.zeros(emg_BSA_results.shape[0]).astype('int'))
+            data = dict(laser_cond = np.zeros(len(flat_trials)).astype('int'))
             ) 
     for cond_num, inds in enumerate(trials):
         trials_frame.loc[inds, 'laser_cond'] = cond_num
