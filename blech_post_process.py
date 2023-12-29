@@ -4,11 +4,7 @@
 import os
 import tables
 import numpy as np
-import easygui
-import ast
-import re
 import pylab as plt
-import matplotlib.image as mpimg
 from sklearn.mixture import GaussianMixture
 import argparse
 import pandas as pd
