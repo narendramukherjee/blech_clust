@@ -131,7 +131,9 @@ spike_set.dejitter_spikes()
 
 ############################################################
 # Load classifier if specificed
-classifier_params_path = bpu.classifier_handler.return_waveform_classifier_params_path(blech_clust_dir)
+classifier_params_path = \
+        bpu.classifier_handler.return_waveform_classifier_params_path(
+                blech_clust_dir)
 classifier_params = json.load(open(classifier_params_path, 'r'))
 
 
@@ -183,7 +185,7 @@ spike_set.write_out_spike_data()
 
 if autosort == False:
     # Run GMM, from 2 to max_clusters
-    max_clutsers = params_dict['clustering_params']['max_clusters']
+    max_clusters = params_dict['clustering_params']['max_clusters']
     for cluster_num in range(2, max_clusters+1):
         cluster_handler = bpu.cluster_handler(
                 params_dict, 
