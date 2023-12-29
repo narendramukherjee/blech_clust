@@ -95,7 +95,7 @@ def get_electrode_details(this_sort_file_handler):
 
         num_clusters_str, continue_bool = entry_checker(\
                 msg = 'Solution number :: ',
-                check_func = lambda x: (str.isdigit(x) and (1<int(x)<=7)),
+                check_func = str.isdigit, 
                 fail_response = 'Please enter an interger')
         if continue_bool:
             num_clusters = int(num_clusters_str)
