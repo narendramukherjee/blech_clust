@@ -12,6 +12,7 @@ import multiprocessing
 import sys
 import shutil
 from glob import glob
+import json
 
 sys.path.append('..')
 from utils.blech_utils import imp_metadata
@@ -23,12 +24,35 @@ data_dir = metadata_handler.dir_name
 os.chdir(data_dir)
 print(f'Processing : {data_dir}')
 
+##############################
+# Setup params
+##############################
+# Get paths
+this_path_handler = path_handler()
+blech_clust_dir = this_path_handler.blech_clust_dir
+blech_emg_dir = os.path.join(blech_clust_dir ,'emg')
+print(f'blech_emg_dir: {blech_emg_dir}')
+
+print(f'blech_clust_dir: {blech_clust_dir}')
+print()
+emg_params_path = os.path.join(blech_clust_dir, 'params', 'emg_params.json')
+
+if not os.path.exists(emg_params_path):
+    print('=== EMG params file not found. ===')
+    print('==> Please copy [[ blech_clust/params/_templates/emg_params.json ]] to [[ blech_clust/params/emg_params.json ]] and update as needed.')
+    exit()
+
+emg_params_dict = json.load(open(emg_params_path, 'r'))
+use_BSA_bool = emg_params_dict['use_BSA']
+
 emg_output_dir = os.path.join(data_dir, 'emg_output')
+print(f'emg_output_dir: {emg_output_dir}')
 # Get dirs for each emg CAR
 dir_list = glob(os.path.join(emg_output_dir,'emg*'))
 dir_list = [x for x in dir_list if os.path.isdir(x)]
 
 for num, dir_name in enumerate(dir_list): 
+    print(f'Processing {dir_name}')
     #if 'emg_channel' not in os.path.basename(dir_name[:-1]):
     if 'emg_env.npy' not in os.listdir(dir_name):
         raise Exception(f'emg_env.py not found for {dir_name}')
@@ -52,10 +76,6 @@ for num, dir_name in enumerate(dir_list):
     env = np.load('./emg_env.npy')
     sig_trials = np.load('./sig_trials.npy')
 
-    # Grab Brandeis unet username
-    this_path_handler = path_handler()
-    blech_clust_dir = this_path_handler.blech_clust_dir
-    blech_emg_dir = os.path.join(blech_clust_dir ,'emg')
 
     # Dump shell file(s) for running GNU parallel job on the 
     # user's blech_clust folder on the desktop
@@ -74,9 +94,15 @@ for num, dir_name in enumerate(dir_list):
     f.close()
 
     # Then produce the file that runs blech_process.py
+    if use_BSA_bool:
+        file_name = 'emg_local_BSA_execute.py'
+        print(' === Using BSA for frequency estimation ===')
+    else:
+        file_name = 'emg_local_STFT_execute.py'
+        print(' === Using STFT for frequency estimation ===')
     f = open(os.path.join(blech_emg_dir,'blech_emg_jetstream_parallel1.sh'), 'w')
     print("export OMP_NUM_THREADS=1", file = f)
-    print("python emg_local_BSA_execute.py $1", file = f)
+    print(f"python {file_name} $1", file = f)
     f.close()
 
     # Finally dump a file with the data directory's location (blech.dir)
