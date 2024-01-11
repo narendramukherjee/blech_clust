@@ -184,6 +184,7 @@ spike_set.write_out_spike_data()
 
 
 if autosort == False:
+    print('=== Performing manual clustering ===')
     # Run GMM, from 2 to max_clusters
     max_clusters = params_dict['clustering_params']['max_clusters']
     for cluster_num in range(2, max_clusters+1):
@@ -203,6 +204,7 @@ if autosort == False:
             classifier_params['use_neuRecommend']:
             cluster_handler.create_classifier_plots(classifier_handler)
 else:
+    print('=== Performing autosorting ===')
     max_clusters = params_dict['clustering_params']['max_autosort_clusters']
     cluster_handler = bpu.cluster_handler(
             params_dict, 
