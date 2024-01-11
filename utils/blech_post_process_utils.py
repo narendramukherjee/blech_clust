@@ -95,7 +95,7 @@ def get_electrode_details(this_sort_file_handler):
 
         num_clusters_str, continue_bool = entry_checker(\
                 msg = 'Solution number :: ',
-                check_func = lambda x: (str.isdigit(x) and (1<int(x)<=7)),
+                check_func = str.isdigit, 
                 fail_response = 'Please enter an interger')
         if continue_bool:
             num_clusters = int(num_clusters_str)
@@ -521,18 +521,26 @@ class unit_descriptor_handler():
             electrode_num,
             this_sort_file_handler,
             split_or_merge,
+            override_ask = False,
             ):
         """
         Save unit to hdf5 file
         """
-        continue_bool, unit_properties = \
-                self.get_unit_properties(
-                        this_sort_file_handler,
-                        split_or_merge,
-                        )
-        if not continue_bool:
-            print(':: Unit not saved ::')
-            return continue_bool, None
+        if not override_ask:
+            continue_bool, unit_properties = \
+                    self.get_unit_properties(
+                            this_sort_file_handler,
+                            split_or_merge,
+                            )
+            if not continue_bool:
+                print(':: Unit not saved ::')
+                return continue_bool, None
+        else:
+            unit_properties = {}
+            unit_properties['single_unit'] = 0
+            unit_properties['regular_spiking'] = 0
+            unit_properties['fast_spiking'] = 0
+            continue_bool = True
 
         if '/sorted_units' not in self.hf5:
             self.hf5.create_group('/', 'sorted_units')
@@ -548,8 +556,6 @@ class unit_descriptor_handler():
                         'waveforms', unit_waveforms)
         times = self.hf5.create_array('/sorted_units/%s' % unit_name, \
                                     'times', unit_times)
-
-
 
         unit_table = self.hf5.create_table(
                 f'/sorted_units/{unit_name}',

@@ -61,6 +61,7 @@ os.chdir(metadata_handler.dir_name)
 electrode_num = int(sys.argv[2])
 print(f'Processing electrode {electrode_num}')
 params_dict = metadata_handler.params_dict
+autosort = params_dict['clustering_params']['autosort']
 
 # Check if the directories for this electrode number exist -
 # if they do, delete them (existence of the directories indicates a
@@ -130,7 +131,9 @@ spike_set.dejitter_spikes()
 
 ############################################################
 # Load classifier if specificed
-classifier_params_path = bpu.classifier_handler.return_waveform_classifier_params_path(blech_clust_dir)
+classifier_params_path = \
+        bpu.classifier_handler.return_waveform_classifier_params_path(
+                blech_clust_dir)
 classifier_params = json.load(open(classifier_params_path, 'r'))
 
 
@@ -148,8 +151,7 @@ if classifier_params['use_classifier'] and \
     classifier_handler.gen_plots()
     classifier_handler.write_out_recommendations()
 
-    # throw_out_noise = True
-    if classifier_params['throw_out_noise']:
+    if classifier_params['throw_out_noise'] or autosort:
         # Remaining data is now only spikes
         slices_dejittered, times_dejittered, clf_prob = \
             classifier_handler.pos_spike_dict.values()
@@ -181,23 +183,43 @@ else:
 spike_set.write_out_spike_data()
 
 
-# Set a threshold on how many datapoints are used to FIT the gmm
-# Run GMM, from 2 to max_clusters
-for cluster_num in range(2, params_dict['max_clusters']+1):
+if autosort == False:
+    print('=== Performing manual clustering ===')
+    # Run GMM, from 2 to max_clusters
+    max_clusters = params_dict['clustering_params']['max_clusters']
+    for cluster_num in range(2, max_clusters+1):
+        cluster_handler = bpu.cluster_handler(
+                params_dict, 
+                data_dir_name, 
+                electrode_num,
+                cluster_num,
+                spike_set,
+                fit_type = 'manual',
+                )
+        cluster_handler.perform_prediction()
+        cluster_handler.remove_outliers(params_dict)
+        cluster_handler.save_cluster_labels()
+        cluster_handler.create_output_plots(params_dict)
+        if classifier_params['use_classifier'] and \
+            classifier_params['use_neuRecommend']:
+            cluster_handler.create_classifier_plots(classifier_handler)
+else:
+    print('=== Performing autosorting ===')
+    max_clusters = params_dict['clustering_params']['max_autosort_clusters']
     cluster_handler = bpu.cluster_handler(
             params_dict, 
             data_dir_name, 
             electrode_num,
-            cluster_num,
-            spike_set)
+            max_clusters, 
+            spike_set,
+            fit_type = 'auto',
+            )
     cluster_handler.perform_prediction()
     cluster_handler.remove_outliers(params_dict)
     cluster_handler.save_cluster_labels()
-    cluster_handler.create_output_plots( 
-                            params_dict)
-    if classifier_params['use_classifier'] and \
-        classifier_params['use_neuRecommend']:
-        cluster_handler.create_classifier_plots(classifier_handler)
+
+    cluster_handler.create_output_plots(params_dict)
+    cluster_handler.create_classifier_plots(classifier_handler)
 
 
 # Make file for dumping info about memory usage
