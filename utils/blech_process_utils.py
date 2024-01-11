@@ -61,7 +61,7 @@ class cluster_handler():
             'spike_waveforms/electrode*/clf_prob.npy'))
 
         if len(clf_list) == 0:
-            pritn()
+            print()
             print('======================================')
             print('Classifier output not found, please run blech_run_process.sh with classifier.')
             print('======================================')
@@ -120,6 +120,7 @@ class cluster_handler():
                 )
 
         # Train on kmeans centroids but predict on the actual data
+        # This is not a problem as both sets belong to the same space/dimensions
         g.fit(bgm_train_data)
         return g
 
@@ -136,7 +137,6 @@ class cluster_handler():
             model = self.fit_manual_model(train_set, self.cluster_num)
         elif self.fit_type == 'auto':
             model = self.fit_auto_model(train_set, self.cluster_num)
-            self.cluster_weights = model.weights_
         labels = self.get_cluster_labels(full_data, model)
         self.labels = labels
 
@@ -161,6 +161,22 @@ class cluster_handler():
                 self.labels,
                 wf_amplitude_sd_cutoff)
             self.labels[cluster_points] = this_cluster
+        # Make sure cluster labels are continuous numbers
+        # as auto-model can return non-continuous numbers 
+        # (e.g. 0, 1, 3, 4, 5, 6, 7, 8, 9, 10)
+        # This is not a problem for manual model
+        # Rename all but label=-1
+        if self.fit_type == 'auto':
+            current_clusters = list(np.unique(self.labels))
+            if -1 in current_clusters:
+                current_clusters.remove(-1)
+            new_labels = np.arange(len(current_clusters))
+            cluster_map = dict(zip(current_clusters, new_labels))
+            # Add -1:-1 mapping
+            cluster_map[-1] = -1
+            print('Renaming Cluters')
+            print(f'Cluster map: {cluster_map}')
+            self.labels = np.array([cluster_map[x] for x in self.labels])
 
     def save_cluster_labels(self):
         np.save(
