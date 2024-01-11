@@ -72,7 +72,7 @@ hdf5_name = metadata_handler.hdf5_name
 # Since this needs classifier output to run, check if it exists
 clf_list = glob('./spike_waveforms/electrode*/clf_prob.npy')
 if len(clf_list) == 0:
-	pritn()
+	print()
 	print('======================================')
 	print('Classifier output not found, please run blech_run_process.sh with classifier.')
 	print('======================================')

@@ -203,12 +203,12 @@ if autosort == False:
             classifier_params['use_neuRecommend']:
             cluster_handler.create_classifier_plots(classifier_handler)
 else:
-    max_clutsers = params_dict['clustering_params']['max_autosort_clusters']
+    max_clusters = params_dict['clustering_params']['max_autosort_clusters']
     cluster_handler = bpu.cluster_handler(
             params_dict, 
             data_dir_name, 
             electrode_num,
-            max_clutsers, 
+            max_clusters, 
             spike_set,
             fit_type = 'auto',
             )
