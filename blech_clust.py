@@ -226,6 +226,7 @@ with open(os.path.join(script_save_path, 'blech_process_single.sh'), 'w') as f:
     f.write(f'DATA_DIR={dir_name} \n')
     f.write('ELECTRODE_NUM=$1 \n')
     f.write('python $BLECH_DIR/blech_process.py $DATA_DIR $ELECTRODE_NUM \n')
+    f.write('python $BLECH_DIR/utils/cluster_stability.py $DATA_DIR $ELECTRODE_NUM \n')
 
 # Dump shell file(s) for running GNU parallel job on the user's 
 # blech_clust folder on the desktop
