@@ -93,5 +93,31 @@ for i in range(num_units):
     plt.close("all")
     print(f'Completed Unit {i}')
 
+# Also plot heatmaps of the PSTH for all tastes
+for i in range(num_units):
+    fig, ax = plt.subplots(1, len(identities), figsize=(18, 6),
+                           sharex=True, sharey=True)
+    neuron_response = response[:, :, i, :]
+    min_val, max_val = np.nanmin(neuron_response), np.nanmax(neuron_response)
+    for j in plot_tastes_dig_in:
+        ax[j].set_title(identities[j])
+        ax[j].pcolormesh(binned_x[plot_places], np.arange(response.shape[1]),
+                neuron_response[j,...,plot_places].T,
+                cmap = 'jet', vmin = min_val, vmax = max_val)
+        ax[j].set_xlabel('Time from taste delivery (ms)')
+        ax[j].set_ylabel('Trial number')
+        ax[j].axvline(0, color = 'k', linestyle = '--', linewidth = 5)
+
+    # Create a common colorbar below the subplots
+    # Min and Max will automatically be set to the min and max of the data
+    cax = fig.add_axes([0.2, -0.05, 0.6, 0.05])
+    cbar = fig.colorbar(ax[0].collections[0], cax=cax, orientation='horizontal')
+    cbar.ax.set_xlabel('Firing rate (Hz)')
+
+    fig.suptitle('Unit: %i, Window size: %i ms, Step size: %i ms' % \
+            (chosen_units[i], window_size, step_size))
+    fig.savefig('./overlay_PSTH/' + '/Unit%i_heatmap.png' % (chosen_units[i]), bbox_inches = 'tight')
+    plt.close(fig)
+
 # Close hdf5 file
 hf5.close()
