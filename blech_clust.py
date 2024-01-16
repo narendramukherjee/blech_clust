@@ -8,6 +8,7 @@ import json
 import glob
 import pandas as pd
 import shutil
+import pylab as plt
 
 # Necessary blech_clust modules
 from utils import read_file
@@ -213,6 +214,46 @@ else:
 channel_corr.gen_corr_output(corr_mat, 
                    qa_out_path, 
                    qa_threshold,)
+##############################
+
+##############################
+# Also output a plot with digin and laser info
+
+# Get digin and laser info
+with tables.open_file(hdf5_name, 'r+') as hf5:
+    dig_in_array = np.stack([x[:] for x in hf5.root.digital_in])
+# Downsample to 10 seconds
+dig_in_array = dig_in_array[:, :(dig_in_array.shape[1]//sampling_rate)*sampling_rate]
+dig_in_array = np.reshape(dig_in_array, (len(dig_in_array), -1, sampling_rate)).sum(axis=2)
+dig_in_markers = np.where(dig_in_array > 0)
+del dig_in_array
+
+# Check if laser is present
+laser_dig_in = info_dict['laser_params']['dig_in']
+
+dig_in_map = {}
+for num, name in zip(info_dict['taste_params']['dig_ins'], info_dict['taste_params']['tastes']):
+    dig_in_map[num] = name
+for num in laser_dig_in:
+    dig_in_map[num] = 'laser'
+
+# Sort dig_in_map
+dig_in_map = {num:dig_in_map[num] for num in sorted(list(dig_in_map.keys()))}
+dig_in_str = [f'{num}: {dig_in_map[num]}' for num in dig_in_map.keys()]
+
+plt.scatter(dig_in_markers[1], dig_in_markers[0], s=50, marker='|', c='k')
+# If there is a laser_dig_in, mark laser trials with axvline
+if laser_dig_in is not None:
+    laser_markers = np.where(dig_in_markers[0] == laser_dig_in)[0]
+    for marker in laser_markers:
+        plt.axvline(dig_in_markers[1][marker], c='yellow', lw=2, alpha = 0.5)
+plt.yticks(np.arange(len(dig_in_int)), dig_in_str)
+plt.title('Digital Inputs')
+plt.xlabel('Time (s)')
+plt.ylabel('Digital Input Channel')
+plt.savefig(os.path.join(qa_out_path, 'digital_inputs.png'))
+plt.close()
+
 ##############################
 
 # Write single runner file to data directory
