@@ -449,8 +449,8 @@ def generate_violations_warning(
         unit_times,
         ):
     print_str = (f':: Merged cluster \n'
-        f':: {violations1:.1f} % (<2ms)\n'
-        f':: {violations2:.1f} % (<1ms)\n'
+        f':: {violations2:.1f} % (<2ms)\n'
+        f':: {violations1:.1f} % (<1ms)\n'
         f':: {len(unit_times)} Total Waveforms \n' 
         ':: I want to still merge these clusters into one unit (y/n) :: ')
     proceed_msg, continue_bool = entry_checker(\
@@ -678,7 +678,14 @@ class unit_descriptor_handler():
         """
         Extracts unit metadata from saved_units directory
         """
+        if '/sorted_units' not in self.hf5:
+            raise ValueError('No sorted_units directory found')
+
         unit_list = self.hf5.list_nodes('/sorted_units')
+
+        if len(unit_list) == 0:
+            raise ValueError('No units found in sorted_units directory')
+
         metadata_list = []
         for unit in unit_list:
             metadata_list.append(unit.unit_metadata[:])
