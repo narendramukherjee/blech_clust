@@ -12,12 +12,16 @@
     "spike_snapshot_after": 1.5,
     "clustering_params": {
         "max_clusters": 7,
-        "max_autosort_clusters": 10,
         "num_iter": 1000,
         "thresh": 0.0001,
         "num_restarts": 10,
-        "auto_cluster": false,
-        "auto_post_process": false
+        "auto_params": {
+            "auto_cluster": false,
+            "auto_post_process": false,
+            "max_autosort_clusters": 10,
+            "cluster_count_threshold": 2000,
+            "chi_square_alpha": 0.05
+        }
     },
     "qa_params": {
         "downsample_rate": 100,

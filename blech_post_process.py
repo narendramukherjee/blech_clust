@@ -49,11 +49,15 @@ if args.dir_name is not None:
 else:
     metadata_handler = imp_metadata([])
 
+# Extract parameters for automatic processing
 params_dict = metadata_handler.params_dict
-auto_cluster = params_dict['clustering_params']['auto_cluster']
+auto_params = params_dict['clustering_params']['auto_params']
+auto_cluster = auto_params['auto_cluster']
 if auto_cluster:
-    max_autosort_clusters = params_dict['clustering_params']['max_autosort_clusters']
-auto_post_process = params_dict['clustering_params']['auto_post_process']
+    max_autosort_clusters = auto_params['max_autosort_clusters']
+auto_post_process = auto_params['auto_post_process']
+count_threshold = auto_params['cluster_count_threshold']
+chi_square_alpha = auto_params['chi_square_alpha'] 
 
 dir_name = metadata_handler.dir_name
 os.chdir(dir_name)
@@ -401,10 +405,8 @@ if auto_post_process and auto_cluster:
                    for this_prob in subcluster_prob]
 
         chi_out = [chisquare(this_dist) for this_dist in prob_dists]
-        count_threshold = 2000
-        alpha = 0.05
 
-        chi_bool = [this_chi[1] < alpha for this_chi in chi_out]
+        chi_bool = [this_chi[1] < chi_square_alpha for this_chi in chi_out]
         count_bool = [len(this_waveform) > count_threshold for this_waveform in subcluster_waveforms]
         fin_bool = np.logical_and(chi_bool, count_bool)
 

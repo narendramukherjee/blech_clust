@@ -61,7 +61,8 @@ os.chdir(metadata_handler.dir_name)
 electrode_num = int(sys.argv[2])
 print(f'Processing electrode {electrode_num}')
 params_dict = metadata_handler.params_dict
-auto_cluster = params_dict['clustering_params']['auto_cluster']
+auto_params = params_dict['clustering_params']['auto_params']
+auto_cluster = auto_params['auto_cluster']
 
 # Check if the directories for this electrode number exist -
 # if they do, delete them (existence of the directories indicates a
@@ -205,7 +206,7 @@ if auto_cluster == False:
             cluster_handler.create_classifier_plots(classifier_handler)
 else:
     print('=== Performing auto_clustering ===')
-    max_clusters = params_dict['clustering_params']['max_autosort_clusters']
+    max_clusters = auto_params['max_autosort_clusters']
     cluster_handler = bpu.cluster_handler(
             params_dict, 
             data_dir_name, 
