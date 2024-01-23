@@ -410,7 +410,30 @@ if auto_post_process and auto_cluster:
         count_bool = [len(this_waveform) > count_threshold for this_waveform in subcluster_waveforms]
         fin_bool = np.logical_and(chi_bool, count_bool)
 
-        ############################################################  
+        ##############################
+        # Generate plots for each subcluster
+        ##############################
+
+        autosort_output_dir = os.path.join(
+            metadata_handler.dir_name,
+            'autosort_outputs'
+        )
+
+        post_utils.gen_autosort_plot(
+            subcluster_prob,
+            subcluster_waveforms,
+            chi_out,
+            mean_waveforms,
+            std_waveforms,
+            subcluster_times,
+            fin_bool,
+            electrode_num,
+            params_dict['sampling_rate'],
+            autosort_output_dir,
+            n_max_plot=5000,
+        )
+
+        ############################################################
         # Finally, save the unit to the HDF5 file
         ############################################################  
 

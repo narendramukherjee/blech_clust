@@ -10,8 +10,10 @@ import argparse
 import pandas as pd
 import uuid
 from utils.blech_utils import entry_checker, imp_metadata
+from utils.blech_process_utils import gen_isi_hist
 from utils import blech_waveforms_datashader
 from datetime import datetime
+
 
 class sort_file_handler():
 
@@ -883,3 +885,104 @@ class split_merge_signal:
             return True
         else:
             return None
+
+
+def gen_autosort_plot(
+        subcluster_prob,
+        subcluster_waveforms,
+        chi_out,
+        mean_waveforms,
+        std_waveforms,
+        subcluster_times,
+        fin_bool,
+        electrode_num,
+        sampling_rate,
+        autosort_output_dir,
+        n_max_plot=5000,
+):
+    """
+    For each electrode, generate a summary of how each
+    cluster was processed
+
+    Inputs:
+        subcluster_prob: list of probabilities of each subcluster 
+        subcluster_waveforms: list of waveforms of each subcluster 
+        chi_out: chi-square p-value of each subcluster's probability distribution
+        mean_waveforms: list of mean waveforms of given subcluster
+        std_waveforms: list of std of waveforms of given subcluster 
+        subcluster_times: list of times of each subcluster 
+        autosort_output_dir: absolute path of directory to save output
+        n_max_plot: maximum number of waveforms to plot
+
+    Outputs:
+        Plots of following quantities
+        1. prob distribution (indicate chi-square p-value in titles)
+        2. ISI distribution
+        3. Histogram of spikes over time
+        4. Mean +/- std of waveform
+        5. A finite amount of raw waveforms
+    """
+
+    if not os.path.exists(autosort_output_dir):
+        os.makedirs(autosort_output_dir)
+    print('== Generating autosort plot ==')
+    print(f'== Saving to {autosort_output_dir} ==')
+
+    fig, ax = plt.subplots(5, len(subcluster_waveforms),
+                           figsize=(5*len(subcluster_prob), 20),
+                           sharex=False, sharey=False)
+    for this_ax, this_waveforms in zip(ax[0], subcluster_waveforms):
+        waveform_count = len(this_waveforms)
+        if waveform_count > n_max_plot:
+            this_waveforms = this_waveforms[np.random.choice(
+                len(this_waveforms), n_max_plot, replace=False)]
+        this_ax.plot(this_waveforms.T, color='k', alpha=0.01)
+        this_ax.set_title('Waveform Count: {}'.format(waveform_count))
+    for this_ax, this_dist, this_chi in zip(ax[2], subcluster_prob, chi_out):
+        this_ax.hist(this_dist, bins=10, alpha=0.5, density=True)
+        this_ax.hist(this_dist, bins=10, alpha=0.5, density=True,
+                     histtype='step', color='k', linewidth=3)
+        this_ax.set_title('Chi-Square p-value: {:.3f}'.format(this_chi.pvalue))
+        this_ax.set_xlabel('Classifier Probability')
+        this_ax.set_xlim([0, 1])
+    # If chi-square p-value is less than alpha, create green border around subplots
+    for i in range(len(subcluster_prob)):
+        if fin_bool[i]:
+            for this_ax in ax[:, i]:
+                for this_spine in this_ax.spines.values():
+                    this_spine.set_edgecolor('green')
+                    this_spine.set_linewidth(5)
+    ax[0, 0].set_ylabel('Waveform Amplitude')
+    ax[2, 0].set_ylabel('Count')
+    for this_ax, this_mean, this_std in zip(ax[1], mean_waveforms, std_waveforms):
+        this_ax.plot(this_mean, color='k')
+        this_ax.fill_between(np.arange(len(this_mean)),
+                             y1=this_mean - this_std,
+                             y2=this_mean + this_std,
+                             color='k', alpha=0.5)
+        this_ax.set_title('Mean +/- Std')
+        this_ax.set_xlabel('Time (samples)')
+        this_ax.set_ylabel('Amplitude')
+    for this_ax, this_times in zip(ax[3], subcluster_times):
+        this_ax.hist(this_times, bins=30, alpha=0.5, density=True)
+        this_ax.set_title('Spike counts over time')
+    for this_ax, this_times in zip(ax[4], subcluster_times):
+        fig, this_ax = gen_isi_hist(
+            this_times,
+            np.arange(len(this_times)),
+            sampling_rate,
+            ax=this_ax,
+        )
+        this_ax.hist(np.diff(this_times), bins=30, alpha=0.5, density=True)
+    # For first 2 rows, equalize y limits
+    lims_list = [this_ax.get_ylim() for this_ax in ax[:2, :].flatten()]
+    min_lim = np.min(lims_list)
+    max_lim = np.max(lims_list)
+    for this_ax in ax[:2, :].flatten():
+        this_ax.set_ylim([min_lim, max_lim])
+    fig.suptitle(f'Electrode {electrode_num:02}', fontsize=20)
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.95)
+    fig.savefig(os.path.join(autosort_output_dir,
+                f'{electrode_num:02}_subclusters.png'))
+    plt.close()
