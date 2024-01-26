@@ -51,6 +51,8 @@ else:
 
 # Extract parameters for automatic processing
 params_dict = metadata_handler.params_dict
+sampling_rate = params_dict['sampling_rate']
+
 auto_params = params_dict['clustering_params']['auto_params']
 auto_cluster = auto_params['auto_cluster']
 if auto_cluster:
@@ -184,7 +186,9 @@ while not auto_post_process:
                             spike_waveforms, 
                             spike_times, 
                             n_clusters, 
-                            this_cluster_inds)
+                            this_cluster_inds,
+                            sampling_rate,
+                            )
         else:
             split_predictions = []
             print("Solution did not converge "\
@@ -220,12 +224,17 @@ while not auto_post_process:
         post_utils.generate_datashader_plot(
                 unit_waveforms, 
                 unit_times,
+                sampling_rate,
                 title = 'Merged Splits',
                 )
         # Generate plot showing merged units in different colors
         post_utils.plot_merged_units(
                 subcluster_waveforms,
                 chosen_split,
+                unit_times, # Using unit_times rather than "subcluster_times"
+                            # because times for each cluster don't need to 
+                            # be separated
+                sampling_rate,
                 max_n_per_cluster = 1000,
                 sd_bound = 1,
                 )
@@ -273,6 +282,8 @@ while not auto_post_process:
         post_utils.plot_merged_units(
                 cluster_waveforms,
                 clusters,
+                unit_times,
+                sampling_rate,
                 max_n_per_cluster = 1000,
                 sd_bound = 1,
                 )
@@ -321,6 +332,12 @@ while not auto_post_process:
 # correct number of clusters
 if auto_post_process and auto_cluster:
     print('==== Auto Post-Processing ====\n')
+
+    autosort_output_dir = os.path.join(
+        metadata_handler.dir_name,
+        'autosort_outputs'
+    )
+
 
     # Since this needs classifier output to run, check if it exists
     clf_list = glob('./spike_waveforms/electrode*/clf_prob.npy')
@@ -372,6 +389,127 @@ if auto_post_process and auto_cluster:
                 ]
         clf_prob, clf_pred = [np.load(this_path) for this_path in clf_data_paths]
 
+        ############################## 
+        # Merge clusters using mahalanobis distance
+        # If min( mahal a->b, mahal b->a ) < threshold, merge
+        # Unless ISI violations are > threshold
+        mahal_thresh = auto_params['mahalanobis_merge_thresh']
+        isi_threshs = auto_params['ISI_violations_thresholds']
+
+        mahal_mat_path = os.path.join(
+                '.',
+                'clustering_results',
+                f'electrode{electrode_num:02}',
+                f'clusters{max_autosort_clusters:02}',
+                'mahalanobis_distances.npy',
+                )
+        mahal_mat = np.load(mahal_mat_path)
+        # Set diagonal as nan
+        np.fill_diagonal(mahal_mat, np.nan)
+
+        unique_clusters = np.unique(split_predictions)
+        assert len(unique_clusters) == len(mahal_mat), \
+                'Mahalanobis matrix does not match number of clusters'
+
+        # If -1 (outliers) in unique clusters, remove from
+        # both unique clusters and mahalanobis matrix
+        if -1 in unique_clusters:
+            outlier_ind = np.where(unique_clusters == -1)[0][0]
+            unique_clusters = np.delete(unique_clusters, outlier_ind)
+            mahal_mat = np.delete(mahal_mat, outlier_ind, axis = 0)
+            mahal_mat = np.delete(mahal_mat, outlier_ind, axis = 1)
+
+        # Check mahal_mat against threshold
+        merge_mat = mahal_mat < mahal_thresh
+
+        # Get indices of clusters to merge
+        merge_inds = np.array(np.where(merge_mat)).T
+        merge_clusters = unique_clusters[merge_inds]
+        
+        # Make sure there are no sets of duplicates
+        # i.e. (1, 2) and (2, 1)
+        merge_sets = [tuple(set(this_pair)) for this_pair in merge_clusters]
+        merge_sets = list(set(merge_sets)) 
+
+        # Check ISI violations for each merge set
+        violations_list = []
+        for this_set in merge_sets:
+            merged_inds = [i for i,val in enumerate(split_predictions) \
+                    if val in this_set] 
+            merged_times = spike_times[merged_inds]
+            violations = post_utils.get_ISI_violations(
+                    merged_times, sampling_rate)
+            violations_list.append(violations)
+
+        violations_pass_bool = [all(
+            np.array(this_violations) < np.array(isi_threshs)
+            ) for this_violations in violations_list]
+
+        final_merge_sets = [this_set for this_set, this_bool \
+                in zip(merge_sets, violations_pass_bool) if this_bool]
+
+
+        if len(final_merge_sets) > 0:
+            # Create names for merged clusters
+            # Rename both to max_clusters
+            new_clust_names = np.arange(len(final_merge_sets)) + \
+                    len(unique_clusters)
+
+            # Print out merge sets
+            print(f'=== Merging {len(final_merge_sets)} Clusters ===')
+            for this_merge_set, new_name in zip(final_merge_sets, new_clust_names):
+                print(f'==== {this_merge_set} => {new_name} ====')
+
+            # Plot merged clusters
+            fig, ax = plt.subplots(1, len(final_merge_sets),
+                                   figsize = (len(final_merge_sets) * 5, 5))
+            # Make sure ax is iterable
+            if len(final_merge_sets) == 1:
+                ax = [ax]
+            for i, this_set in enumerate(final_merge_sets): 
+                cluster_inds = [np.where(split_predictions == this_cluster)[0] \
+                        for this_cluster in this_set]
+                cluster_waveforms = [spike_waveforms[this_inds] \
+                        for this_inds in cluster_inds]
+                cluster_times = [spike_times[this_inds] \
+                        for this_inds in cluster_inds]
+
+
+                fig, ax[i] = post_utils.plot_merged_units(
+                            cluster_waveforms,
+                            this_set,
+                            np.concatenate(cluster_times), 
+                            sampling_rate,
+                            max_n_per_cluster = 1000,
+                            sd_bound = 1,
+                            ax = ax[i],
+                            )
+            # Get titles for each ax
+            ax_titles = [this_ax.get_title() for this_ax in ax]
+            ax_titles = [f'New Cluster {new_name}'+'\n'+this_title \
+                    for new_name, this_title in zip(new_clust_names, ax_titles)] 
+
+            # Set titles
+            for this_ax, this_title in zip(ax, ax_titles):
+                this_ax.set_title(this_title)
+
+            fig.savefig(
+                    os.path.join(
+                        autosort_output_dir,
+                        f'{electrode_num:02}_merged_units.png',
+                        ),
+                    bbox_inches = 'tight',
+                    )
+            plt.close(fig)
+
+            # Update split_predictions
+            for this_set, this_name in zip(final_merge_sets, new_clust_names):
+                for this_cluster in this_set:
+                    split_predictions[split_predictions == this_cluster] = this_name
+
+        ############################## 
+
+
         # If auto-clustering was done, data has already been trimmed
         # Only clf_pred needs to be trimmed
         clf_prob = clf_prob[clf_pred]
@@ -414,11 +552,6 @@ if auto_post_process and auto_cluster:
         # Generate plots for each subcluster
         ##############################
 
-        autosort_output_dir = os.path.join(
-            metadata_handler.dir_name,
-            'autosort_outputs'
-        )
-
         post_utils.gen_autosort_plot(
             subcluster_prob,
             subcluster_waveforms,
@@ -428,7 +561,7 @@ if auto_post_process and auto_cluster:
             subcluster_times,
             fin_bool,
             electrode_num,
-            params_dict['sampling_rate'],
+            sampling_rate,
             autosort_output_dir,
             n_max_plot=5000,
         )

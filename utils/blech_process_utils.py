@@ -225,7 +225,7 @@ class cluster_handler():
         np.save(
             os.path.join(
                 self.clust_results_dir, 'mahalanobis_distances.npy'),
-            self.labels)
+            self.mahal_matrix)
 
     def create_output_dir(self):
         # Make folder for results of i+2 clusters, and store results there

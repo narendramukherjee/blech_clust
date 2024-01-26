@@ -167,7 +167,8 @@ def generate_cluster_plots(
         spike_waveforms, 
         spike_times, 
         n_clusters, 
-        this_cluster
+        this_cluster,
+        sampling_rate,
         ):
     """
     Generate grid of plots for each cluster
@@ -203,6 +204,7 @@ def generate_cluster_plots(
         generate_datashader_plot(
                 slices_dejittered,
                 times_dejittered,
+                sampling_rate,
                 title = f'Split Cluster {cluster}',
                 ax = ax.flatten()[cluster],)
 
@@ -319,12 +321,12 @@ def clean_memory_monitor_data():
         f.close()
     print('==============================')
 
-def get_ISI_violations(unit_times):
+def get_ISI_violations(unit_times, sampling_rate):
     """
     Get ISI violations
     """
 
-    ISIs = np.ediff1d(np.sort(unit_times))/30.0
+    ISIs = np.ediff1d(np.sort(unit_times))/(sampling_rate/1000)
     violations1 = 100.0*float(np.sum(ISIs < 1.0)/len(unit_times))
     violations2 = 100.0*float(np.sum(ISIs < 2.0)/len(unit_times))
     return violations1, violations2
@@ -332,13 +334,14 @@ def get_ISI_violations(unit_times):
 def generate_datashader_plot(
         unit_waveforms,
         unit_times,
+        sampling_rate,
         title = None,
         ax = None,
         ):
     """
     Generate datashader plot
     """
-    violations1, violations2 = get_ISI_violations(unit_times)
+    violations1, violations2 = get_ISI_violations(unit_times, sampling_rate)
 
     # Show the merged cluster to the user, 
     # and ask if they still want to merge
@@ -358,8 +361,8 @@ def generate_datashader_plot(
         title_add = ''
     print_str = (
         title_add + '\n' +\
-        f'{violations2:.1f} % (<2ms),'
-        f'{violations1:.1f} % (<1ms),'
+        f'{violations2:.1f} % (<2ms), '
+        f'{violations1:.1f} % (<1ms), '
         f'{len(unit_times)} total waveforms. \n') 
     ax.set_title(print_str)
     plt.tight_layout()
@@ -369,8 +372,11 @@ def generate_datashader_plot(
 def plot_merged_units(
         cluster_waveforms,
         cluster_labels,
+        cluster_times,
+        sampling_rate,
         max_n_per_cluster = 1000,
         sd_bound = 1,
+        ax = None,
         ):
     """
     Plot merged units
@@ -384,6 +390,9 @@ def plot_merged_units(
     Outputs:
         fig, ax: figure and axis objects
     """
+
+    violations1, violations2 = get_ISI_violations(cluster_times, sampling_rate)
+
     mean_waveforms = [x.mean(axis=0) for x in cluster_waveforms]
     sd_waveforms = [x.std(axis=0) for x in cluster_waveforms]
 
@@ -395,18 +404,32 @@ def plot_merged_units(
             for x in cluster_waveforms]
 
     cmap = plt.cm.get_cmap('Set1')
-    fig, ax = plt.subplots(1,1, figsize = (10,10))
+
+    if ax is None:
+        fig, ax = plt.subplots(1,1, figsize = (7,7))
+    else:
+        fig = ax.get_figure()
     for i in range(n_clusters):
         inds = plot_inds[i]
-        ax.plot(mean_waveforms[i], color = cmap(i), label = f'Cluster {cluster_labels[i]}')
+        ax.plot(mean_waveforms[i], 
+                color = cmap(i), 
+                linewidth = 5,
+                label = f'Cluster {cluster_labels[i]}',
+                zorder = 11)
         ax.fill_between(np.arange(len(mean_waveforms[i])),
                 mean_waveforms[i] - sd_bound*sd_waveforms[i],
                 mean_waveforms[i] + sd_bound*sd_waveforms[i],
-                color = cmap(i), alpha = 0.2)
-        ax.plot(cluster_waveforms[i].T, color = cmap(i), alpha = 0.01)
+                color = cmap(i), alpha = 0.2,
+                        zorder = 10)
+        ax.plot(cluster_waveforms[i][plot_inds[i]].T, 
+                color = cmap(i), alpha = 100/max_n_per_cluster)
     ax.set_xlabel('Sample (30 samples / ms)')
     ax.set_ylabel('Voltage (uV)')
-    ax.set_title('Merged units')
+    print_str = (
+        f'{violations2:.1f} % (<2ms), '
+        f'{violations1:.1f} % (<1ms), '
+        f'{len(cluster_times)} total waveforms. \n') 
+    ax.set_title('Merged units\n' + print_str)
     ax.legend()
     plt.tight_layout()
     
