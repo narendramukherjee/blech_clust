@@ -20,7 +20,8 @@
             "auto_post_process": false,
             "max_autosort_clusters": 10,
             "cluster_count_threshold": 2000,
-            "chi_square_alpha": 0.05
+            "chi_square_alpha": 0.05,
+            "mahalanobis_merge_thresh": 3
         }
     },
     "qa_params": {

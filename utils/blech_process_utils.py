@@ -4,6 +4,7 @@ import utils.clustering as clust
 from joblib import load
 from sklearn.mixture import GaussianMixture as gmm
 from sklearn.mixture import BayesianGaussianMixture as BGM
+from scipy.spatial.distance import mahalanobis
 from utils import blech_waveforms_datashader
 import subprocess
 from scipy.stats import zscore
@@ -131,13 +132,17 @@ class cluster_handler():
         return model.predict(data)
 
     def perform_prediction(self): 
+        """
+        Perform clustering
+        Model needs to be saved for calculation of mahalanobis distances
+        """
         full_data = self.spike_set.spike_features
         train_set = self.return_training_set(full_data)
         if self.fit_type == 'manual':
-            model = self.fit_manual_model(train_set, self.cluster_num)
+            self.model = self.fit_manual_model(train_set, self.cluster_num)
         elif self.fit_type == 'auto':
-            model = self.fit_auto_model(train_set, self.cluster_num)
-        labels = self.get_cluster_labels(full_data, model)
+            self.model = self.fit_auto_model(train_set, self.cluster_num)
+        labels = self.get_cluster_labels(full_data, self.model)
         self.labels = labels
 
     def remove_outliers(self, params_dict):
@@ -182,6 +187,44 @@ class cluster_handler():
         np.save(
             os.path.join(
                 self.clust_results_dir, 'predictions.npy'),
+            self.labels)
+
+    def calc_mahalanobis_distance_matrix(self):
+        """
+        Calculates matrix of mahalanobis distances between all pairs of clusters
+        Saves matrix to file
+        """
+        # assert model in dir(self), 'Model not found'
+        cluster_labels = np.unique(self.labels)
+        mahal_matrix = np.zeros((len(cluster_labels), len(cluster_labels)))
+        full_data = self.spike_set.spike_features
+        for i, clust_i in enumerate(cluster_labels): 
+            for j, clust_j in enumerate(cluster_labels):
+                # Use sample covariances so we can use labels
+                this_cluster_data = \
+                        full_data[np.where(self.labels == clust_i)[0]]
+                # If cluster is smaller than 3, it gives
+                # singular covariance matrix
+                if len(this_cluster_data) > 2:
+                    this_cluster_mean = np.mean(this_cluster_data, axis=0)
+                    this_cluster_cov = np.cov(this_cluster_data, rowvar=False)
+                    # this_cluster_mean = self.model.means_[i]
+                    # this_cluster_cov = self.model.covariances_[i]
+                    inv_cov = np.linalg.inv(this_cluster_cov)
+                    other_cluster = np.where(self.labels == clust_j)[0]
+                    other_cluster_data = full_data[other_cluster]
+                    mahal_list = [
+                        mahalanobis(x, this_cluster_mean, inv_cov) \
+                                for x in other_cluster_data
+                                ]
+                    mahal_matrix[i, j] = np.mean(mahal_list)
+                else:
+                    mahal_matrix[i, j] = np.nan
+        # Needs to be saved for plotting
+        self.mahal_matrix = mahal_matrix
+        np.save(
+            os.path.join(
+                self.clust_results_dir, 'mahalanobis_distances.npy'),
             self.labels)
 
     def create_output_dir(self):
@@ -325,6 +368,28 @@ class cluster_handler():
 
     def create_output_plots(self,
                             params_dict):
+
+        # Generate mahalanobis distance plot
+        fig, ax = plt.subplots()
+        im = ax.matshow(self.mahal_matrix)
+        fig.colorbar(im, ax=ax)
+        # Annotated the plot with values of the matrix
+        for (i, j), z in np.ndenumerate(self.mahal_matrix):
+            ax.text(j, i, '{:0.1f}'.format(z), ha='center', va='center',
+                    bbox=dict(boxstyle='round', facecolor='white', edgecolor='0.3'),
+                    fontweight='bold', color='red')
+        cluster_labels = np.unique(self.labels)
+        ax.set_xticks(np.arange(len(cluster_labels)))
+        ax.set_yticks(np.arange(len(cluster_labels)))
+        ax.set_xticklabels(cluster_labels)
+        ax.set_yticklabels(cluster_labels)
+        ax.set_title('Mahalanobis Distance')
+        ax.set_xlabel('Cluster')
+        ax.set_ylabel('Cluster')
+        plt.tight_layout()
+        fig.savefig(os.path.join(self.clust_plot_dir, 'mahalanobis_dist'),
+                    bbox_inches='tight')
+        plt.close(fig)
 
         slices_dejittered = self.spike_set.slices_dejittered
         times_dejittered = self.spike_set.times_dejittered
