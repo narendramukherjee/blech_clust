@@ -210,7 +210,7 @@ class cluster_handler():
                     this_cluster_cov = np.cov(this_cluster_data, rowvar=False)
                     # this_cluster_mean = self.model.means_[i]
                     # this_cluster_cov = self.model.covariances_[i]
-                    inv_cov = np.linalg.inv(this_cluster_cov)
+                    inv_cov = np.linalg.pinv(this_cluster_cov)
                     other_cluster = np.where(self.labels == clust_j)[0]
                     other_cluster_data = full_data[other_cluster]
                     mahal_list = [
