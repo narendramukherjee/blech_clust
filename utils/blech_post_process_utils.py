@@ -918,6 +918,7 @@ def gen_autosort_plot(
         std_waveforms,
         subcluster_times,
         fin_bool,
+        cluster_labels,
         electrode_num,
         sampling_rate,
         autosort_output_dir,
@@ -954,13 +955,15 @@ def gen_autosort_plot(
     fig, ax = plt.subplots(5, len(subcluster_waveforms),
                            figsize=(5*len(subcluster_prob), 20),
                            sharex=False, sharey=False)
-    for this_ax, this_waveforms in zip(ax[0], subcluster_waveforms):
+    for i, (this_ax, this_waveforms) in \
+            enumerate(zip(ax[0], subcluster_waveforms)):
         waveform_count = len(this_waveforms)
         if waveform_count > n_max_plot:
             this_waveforms = this_waveforms[np.random.choice(
                 len(this_waveforms), n_max_plot, replace=False)]
         this_ax.plot(this_waveforms.T, color='k', alpha=0.01)
-        this_ax.set_title('Waveform Count: {}'.format(waveform_count))
+        this_ax.set_title(f'Cluster {cluster_labels[i]}' + '\n' +\
+                'Waveform Count: {}'.format(waveform_count))
     for this_ax, this_dist, this_chi in zip(ax[2], subcluster_prob, chi_out):
         this_ax.hist(this_dist, bins=10, alpha=0.5, density=True)
         this_ax.hist(this_dist, bins=10, alpha=0.5, density=True,
@@ -968,7 +971,8 @@ def gen_autosort_plot(
         this_ax.set_title('Chi-Square p-value: {:.3f}'.format(this_chi.pvalue))
         this_ax.set_xlabel('Classifier Probability')
         this_ax.set_xlim([0, 1])
-    # If chi-square p-value is less than alpha, create green border around subplots
+    # If chi-square p-value is less than alpha, 
+    # create green border around subplots
     for i in range(len(subcluster_prob)):
         if fin_bool[i]:
             for this_ax in ax[:, i]:
