@@ -13,6 +13,7 @@ from utils.blech_utils import entry_checker, imp_metadata
 from utils.blech_process_utils import gen_isi_hist
 from utils import blech_waveforms_datashader
 from datetime import datetime
+from scipy.stats import chisquare
 
 
 class sort_file_handler():
@@ -433,6 +434,81 @@ def plot_merged_units(
     ax.legend()
     plt.tight_layout()
     
+    return fig, ax
+
+def gen_plot_auto_merged_clusters(
+        spike_waveforms,
+        spike_times,
+        split_predictions,
+        sampling_rate,
+        final_merge_sets,
+        new_clust_names,
+        ):
+
+    """
+    Plot all merged clusters on sample plot
+    **NOTE** This is different from plot_merged_units
+
+    Inputs:
+        spike_waveforms - (n_spikes, n_samples) array of spike waveforms
+        spike_times - (n_spikes,) array of spike times
+        split_predictions - (n_spikes,) array of cluster labels
+        sampling_rate - sampling rate of the recording
+        final_merge_sets - list of lists of clusters to merge
+
+    Outputs:
+        fig - matplotlib figure handle
+        ax - matplotlib axis handle
+    """
+
+    # Plot merged clusters
+    fig, ax = plt.subplots(1, len(final_merge_sets),
+                           figsize = (len(final_merge_sets) * 5, 5))
+    # Make sure ax is iterable
+    if len(final_merge_sets) == 1:
+        ax = [ax]
+    for i, this_set in enumerate(final_merge_sets): 
+        cluster_inds = [np.where(split_predictions == this_cluster)[0] \
+                for this_cluster in this_set]
+        cluster_waveforms = [spike_waveforms[this_inds] \
+                for this_inds in cluster_inds]
+        cluster_times = [spike_times[this_inds] \
+                for this_inds in cluster_inds]
+
+
+        fig, ax[i] = plot_merged_units(
+                    cluster_waveforms,
+                    this_set,
+                    np.concatenate(cluster_times), 
+                    sampling_rate,
+                    max_n_per_cluster = 1000,
+                    sd_bound = 1,
+                    ax = ax[i],
+                    )
+    # Get titles for each ax
+    ax_titles = [this_ax.get_title() for this_ax in ax]
+    ax_titles = [f'New Cluster {new_name}'+'\n'+this_title \
+            for new_name, this_title in zip(new_clust_names, ax_titles)] 
+
+    # Set titles
+    for this_ax, this_title in zip(ax, ax_titles):
+        this_ax.set_title(this_title)
+
+    # Add waveform counts to legend
+    waveform_counts = [len(this_inds) for this_inds in cluster_inds]
+    for this_ax in ax:
+        current_legend_texts = this_ax.get_legend().get_texts() 
+        new_legend_texts = [f'{this_text.get_text()} ({this_count})' \
+                for this_text, this_count in zip(
+                    current_legend_texts,
+                    waveform_counts,
+                    )]
+        for this_text, new_text in zip(
+                current_legend_texts,
+                new_legend_texts,
+                ):
+            this_text.set_text(new_text)
+
     return fig, ax
 
 def delete_raw_recordings(hdf5_name):
@@ -956,14 +1032,15 @@ def gen_autosort_plot(
                            figsize=(5*len(subcluster_prob), 20),
                            sharex=False, sharey=False)
     for i, (this_ax, this_waveforms) in \
-            enumerate(zip(ax[0], subcluster_waveforms)):
+            enumerate(zip(ax[:2,:].T, subcluster_waveforms)):
         waveform_count = len(this_waveforms)
         if waveform_count > n_max_plot:
             this_waveforms = this_waveforms[np.random.choice(
                 len(this_waveforms), n_max_plot, replace=False)]
-        this_ax.plot(this_waveforms.T, color='k', alpha=0.01)
-        this_ax.set_title(f'Cluster {cluster_labels[i]}' + '\n' +\
+        this_ax[0].set_title(f'Cluster {cluster_labels[i]}' + '\n' +\
                 'Waveform Count: {}'.format(waveform_count))
+        for this_this_ax in this_ax:
+            this_this_ax.plot(this_waveforms.T, color='k', alpha=0.01)
     for this_ax, this_dist, this_chi in zip(ax[2], subcluster_prob, chi_out):
         this_ax.hist(this_dist, bins=10, alpha=0.5, density=True)
         this_ax.hist(this_dist, bins=10, alpha=0.5, density=True,
@@ -1005,7 +1082,7 @@ def gen_autosort_plot(
     lims_list = [this_ax.get_ylim() for this_ax in ax[:2, :].flatten()]
     min_lim = np.min(lims_list)
     max_lim = np.max(lims_list)
-    for this_ax in ax[:2, :].flatten():
+    for this_ax in ax[0, :].flatten():
         this_ax.set_ylim([min_lim, max_lim])
     fig.suptitle(f'Electrode {electrode_num:02}', fontsize=20)
     plt.tight_layout()
@@ -1013,3 +1090,225 @@ def gen_autosort_plot(
     fig.savefig(os.path.join(autosort_output_dir,
                 f'{electrode_num:02}_subclusters.png'))
     plt.close()
+
+def get_cluster_props(
+        split_predictions,
+        spike_waveforms,
+        clf_prob,
+        spike_times,
+        chi_square_alpha,
+        count_threshold,
+        ):
+    """
+    Calculate the following properties for each cluster:
+    - waveforms
+    - times
+    - probs
+    - mean waveform
+    - std waveform
+    - chi_square p-value on classifier probability distribution
+
+    Inputs:
+        split_predictions: array of cluster labels
+        spike_waveforms: array of spike waveforms
+        clf_prob: array of classifier probabilities
+        spike_times: array of spike times
+
+    Outputs:
+        subcluster_inds: list of indices for each cluster
+        subcluster_waveforms: list of waveforms for each cluster
+        subcluster_prob: list of probabilities for each cluster
+        subcluster_times: list of times for each cluster
+        mean_waveforms: list of mean waveforms for each cluster
+        std_waveforms: list of std waveforms for each cluster
+        fin_bool: list of booleans indicating whether the cluster is a wanted unit
+        fin_bool_dict: dictionary of booleans indicating whether the cluster is a wanted unit
+    """
+
+    # Once selections have been made, save data
+    # Waveforms of originally chosen cluster
+    subcluster_inds = [np.where(split_predictions == this_split)[0] \
+            for this_split in np.unique(split_predictions)]
+    subcluster_waveforms = [spike_waveforms[this_inds] \
+            for this_inds in subcluster_inds]
+    subcluster_prob = [clf_prob[this_inds] \
+            for this_inds in subcluster_inds]
+    subcluster_times = [spike_times[this_inds] \
+            for this_inds in subcluster_inds]
+    mean_waveforms = [np.mean(this_waveform, axis = 0) for this_waveform in subcluster_waveforms]
+    std_waveforms = [np.std(this_waveform, axis = 0) for this_waveform in subcluster_waveforms]
+
+    # Check that the probability distributions are not uniform
+    # That indicates that the cluster is likely generated by noise
+
+    prob_dists = [np.histogram(this_prob, bins = 10, density = True)[0]
+               for this_prob in subcluster_prob]
+
+    chi_out = [chisquare(this_dist) for this_dist in prob_dists]
+
+    chi_bool = [this_chi[1] < chi_square_alpha for this_chi in chi_out]
+    count_bool = [len(this_waveform) > count_threshold for this_waveform in subcluster_waveforms]
+
+    # To avoid confusion between index and cluster number,
+    # change fin_bool to dictionary because it gets used later
+    unique_clusters = np.unique(split_predictions)
+    fin_bool = np.logical_and(chi_bool, count_bool)
+    fin_bool_dict = dict(zip(unique_clusters, fin_bool))
+
+    return (
+        subcluster_inds,
+        subcluster_waveforms,
+        subcluster_prob,
+        subcluster_times,
+        mean_waveforms,
+        std_waveforms,
+        chi_out,
+        fin_bool,
+        fin_bool_dict,
+        )
+    
+def calculate_merge_sets(
+        mahal_mat,
+        mahal_thresh,
+        isi_threshs,
+        split_predictions,
+        spike_waveforms,
+        spike_times,
+        clf_prob,
+        chi_square_alpha,
+        count_threshold,
+        sampling_rate,
+        ):
+
+    """
+    Calculate which clusters to merge based on mahalanobis distance
+    and ISI violations
+
+    Inputs:
+        mahal_mat: (n_clusters, n_clusters) matrix of mahalanobis distances
+        mahal_thresh: float, threshold for mahalanobis distance
+        isi_threshs: list of floats, thresholds for ISI violations
+        split_predictions: (n_spikes,) array of cluster predictions
+        spike_times: (n_spikes,) array of spike times
+        sample_rate: float, sample rate of recording
+
+    Outputs:
+        final_merge_sets: list of tuples, 
+                          each tuple is a pair of clusters to merge
+    """
+
+    unique_clusters = np.unique(split_predictions)
+
+    # Set diagonal as nan
+    np.fill_diagonal(mahal_mat, np.nan)
+
+    # If -1 (outliers) in unique clusters, remove from
+    # both unique clusters and mahalanobis matrix
+    if -1 in unique_clusters:
+        outlier_ind = np.where(unique_clusters == -1)[0][0]
+        unique_clusters = np.delete(unique_clusters, outlier_ind)
+        mahal_mat = np.delete(mahal_mat, outlier_ind, axis = 0)
+        mahal_mat = np.delete(mahal_mat, outlier_ind, axis = 1)
+
+    # Check mahal_mat against threshold
+    merge_mat = mahal_mat < mahal_thresh
+
+    # Get indices of clusters to merge
+    merge_inds = np.array(np.where(merge_mat)).T
+    merge_clusters = unique_clusters[merge_inds]
+    
+    # Make sure there are no sets of duplicates
+    # i.e. (1, 2) and (2, 1)
+    merge_sets = [tuple(set(this_pair)) for this_pair in merge_clusters]
+    merge_sets = list(set(merge_sets)) 
+
+    # At this stage, we are certain these need to be merged
+    # Consolidate overlapping merge sets
+    # Check for intersections between sets, if there is one,
+    # merge sets
+    # Repeat until no intersections
+    final_merge_sets = [set(this_set) for this_set in merge_sets]
+    while True:
+        # Check for intersections
+        # If there is one, merge sets and start over
+        # If not, break
+        intersect_bool = False
+        for i, this_set in enumerate(final_merge_sets):
+            for j, other_set in enumerate(final_merge_sets):
+                if i == j:
+                    continue
+                if len(this_set.intersection(other_set)) > 0:
+                    intersect_bool = True
+                    final_merge_sets[i] = this_set.union(other_set)
+                    final_merge_sets[j] = set()
+                    break
+            if intersect_bool:
+                break
+        # Remove empty sets
+        final_merge_sets = [this_set for this_set in final_merge_sets \
+                if len(this_set) > 0]
+        if not intersect_bool:
+            break
+
+    # Convert back to tuples
+    final_merge_sets = [tuple(this_set) for this_set in final_merge_sets]
+
+    # Check ISI violations for each merge set
+    violations_list = []
+    for this_set in final_merge_sets:
+        merged_inds = [i for i,val in enumerate(split_predictions) \
+                if val in this_set] 
+        merged_times = spike_times[merged_inds]
+        violations = get_ISI_violations(
+                merged_times, sampling_rate)
+        violations_list.append(violations)
+
+    violations_pass_bool = [all(
+        np.array(this_violations) < np.array(isi_threshs)
+        ) for this_violations in violations_list]
+
+    final_merge_sets = [this_set for this_set, this_bool \
+            in zip(final_merge_sets, violations_pass_bool) if this_bool]
+
+    # Only keep merge sets if they contain at least one unit
+    
+    # Update split_predicitons so 1) waveform count, 2) distribution
+    # of classifier probs can be tested
+
+    new_clust_names = np.arange(len(final_merge_sets)) + \
+            len(unique_clusters)
+
+    new_name_dict = dict(zip(new_clust_names, final_merge_sets))
+
+    merge_split_predictions = split_predictions.copy()
+
+    for this_set, this_name in zip(final_merge_sets, new_clust_names):
+        for this_cluster in this_set:
+            inds = merge_split_predictions == this_cluster
+            merge_split_predictions[inds] = this_name
+
+    (
+        subcluster_inds,
+        subcluster_waveforms,
+        subcluster_prob,
+        subcluster_times,
+        mean_waveforms,
+        std_waveforms,
+        chi_out,
+        fin_bool,
+        fin_bool_dict,
+    ) = \
+            get_cluster_props(
+                merge_split_predictions,
+                spike_waveforms,
+                clf_prob,
+                spike_times,
+                chi_square_alpha,
+                count_threshold,
+                )
+
+    # Check fin_merge_sets against fin_bool_dict
+    fin_merge_sets = [val for key,val in new_name_dict.items() \
+            if fin_bool_dict[key]]
+
+    return fin_merge_sets, new_clust_names
