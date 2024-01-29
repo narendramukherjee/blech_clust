@@ -117,7 +117,7 @@ class cluster_handler():
                 # This can be systematically adjusted to match
                 # actual data
                 weight_concentration_prior = 0.1,
-                verbose = 10,
+                verbose = 0,
                 )
 
         # Train on kmeans centroids but predict on the actual data
