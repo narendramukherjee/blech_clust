@@ -45,8 +45,11 @@ bash conda_requirements_base.sh                             # Install main packa
 bash install_gnu_parallel.sh                                # Install GNU Parallel
 pip install -r pip_requirements_base.txt                    # Install pip requirements (not covered by conda)
 bash patch_dependencies.sh                                  # Fix issues with dependencies
+
+### Install neuRecommend (classifier)
 cd ~/Desktop                                                # Relocate to download classifier library
 git clone https://github.com/abuzarmahmood/neuRecommend.git # Download classifier library
+pip install -r neuRecommend/requirements.txt
 ```
 - Parameter files will need to be setup according to [Setting up params](https://github.com/abuzarmahmood/blech_clust/wiki/Getting-Started#setting-up-params)
 
