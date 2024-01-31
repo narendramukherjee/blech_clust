@@ -492,7 +492,7 @@ class classifier_handler():
         model_dir = f'{home_dir}/Desktop/neuRecommend/model'
 
         # Download neuRecommend if not found
-        self.download_neurecommend_models(home_dir, model_dir)
+        # self.download_neurecommend_models(home_dir, model_dir)
 
         pred_pipeline_path = f'{model_dir}/xgboost_full_pipeline.dump'
         feature_pipeline_path = f'{model_dir}/feature_engineering_pipeline.dump'

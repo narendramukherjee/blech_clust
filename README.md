@@ -37,13 +37,16 @@ website at https://sites.google.com/a/brandeis.edu/katzlab/
 
 ### Setup
 ```
-cd <path_to_blech_clust>/requirements               # Move into blech_clust folder with requirements files
-conda clean --all                                   # Removes unused packages and caches
-conda create --name blech_clust python=3.8.13       # Create "blech_clust" environment with conda requirements
-conda activate blech_clust                          # Activate blech_clust environment
-bash conda_requirements_base.sh                     # Install main packages using conda/mamba
-bash install_gnu_parallel.sh                        # Install GNU Parallel
-pip install -r pip_requirements_base.txt            # Install pip requirements (not covered by conda)
+cd <path_to_blech_clust>/requirements                       # Move into blech_clust folder with requirements files
+conda clean --all                                           # Removes unused packages and caches
+conda create --name blech_clust python=3.8.13               # Create "blech_clust" environment with conda requirements
+conda activate blech_clust                                  # Activate blech_clust environment
+bash conda_requirements_base.sh                             # Install main packages using conda/mamba
+bash install_gnu_parallel.sh                                # Install GNU Parallel
+pip install -r pip_requirements_base.txt                    # Install pip requirements (not covered by conda)
+pip install -r patch_dependencies.txt                       # Fix issues with dependencies
+cd ~/Desktop                                                # Relocate to download classifier library
+git clone https://github.com/abuzarmahmood/neuRecommend.git # Download classifier library
 ```
 - Parameter files will need to be setup according to [Setting up params](https://github.com/abuzarmahmood/blech_clust/wiki/Getting-Started#setting-up-params)
 
