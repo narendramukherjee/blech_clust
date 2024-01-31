@@ -37,6 +37,9 @@ website at https://sites.google.com/a/brandeis.edu/katzlab/
 
 ### Setup
 ```
+conda deactivate                                            # Make sure we're in the base environemnt
+conda update -n base conda                                  # Update conda to have the new Libmamba solver
+
 cd <path_to_blech_clust>/requirements                       # Move into blech_clust folder with requirements files
 conda clean --all                                           # Removes unused packages and caches
 conda create --name blech_clust python=3.8.13               # Create "blech_clust" environment with conda requirements
