@@ -44,7 +44,7 @@ conda activate blech_clust                                  # Activate blech_clu
 bash conda_requirements_base.sh                             # Install main packages using conda/mamba
 bash install_gnu_parallel.sh                                # Install GNU Parallel
 pip install -r pip_requirements_base.txt                    # Install pip requirements (not covered by conda)
-pip install -r patch_dependencies.txt                       # Fix issues with dependencies
+bash patch_dependencies.sh                                  # Fix issues with dependencies
 cd ~/Desktop                                                # Relocate to download classifier library
 git clone https://github.com/abuzarmahmood/neuRecommend.git # Download classifier library
 ```
