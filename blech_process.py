@@ -54,14 +54,14 @@ path_handler = bpu.path_handler()
 blech_clust_dir = path_handler.blech_clust_dir
 data_dir_name = sys.argv[1]
 
-
 metadata_handler = imp_metadata([[], data_dir_name])
 os.chdir(metadata_handler.dir_name)
 
 electrode_num = int(sys.argv[2])
 print(f'Processing electrode {electrode_num}')
 params_dict = metadata_handler.params_dict
-autosort = params_dict['clustering_params']['autosort']
+auto_params = params_dict['clustering_params']['auto_params']
+auto_cluster = auto_params['auto_cluster']
 
 # Check if the directories for this electrode number exist -
 # if they do, delete them (existence of the directories indicates a
@@ -151,7 +151,7 @@ if classifier_params['use_classifier'] and \
     classifier_handler.gen_plots()
     classifier_handler.write_out_recommendations()
 
-    if classifier_params['throw_out_noise'] or autosort:
+    if classifier_params['throw_out_noise'] or auto_cluster:
         # Remaining data is now only spikes
         slices_dejittered, times_dejittered, clf_prob = \
             classifier_handler.pos_spike_dict.values()
@@ -183,7 +183,7 @@ else:
 spike_set.write_out_spike_data()
 
 
-if autosort == False:
+if auto_cluster == False:
     print('=== Performing manual clustering ===')
     # Run GMM, from 2 to max_clusters
     max_clusters = params_dict['clustering_params']['max_clusters']
@@ -198,14 +198,15 @@ if autosort == False:
                 )
         cluster_handler.perform_prediction()
         cluster_handler.remove_outliers(params_dict)
+        cluster_handler.calc_mahalanobis_distance_matrix()
         cluster_handler.save_cluster_labels()
         cluster_handler.create_output_plots(params_dict)
         if classifier_params['use_classifier'] and \
             classifier_params['use_neuRecommend']:
             cluster_handler.create_classifier_plots(classifier_handler)
 else:
-    print('=== Performing autosorting ===')
-    max_clusters = params_dict['clustering_params']['max_autosort_clusters']
+    print('=== Performing auto_clustering ===')
+    max_clusters = auto_params['max_autosort_clusters']
     cluster_handler = bpu.cluster_handler(
             params_dict, 
             data_dir_name, 
@@ -216,8 +217,8 @@ else:
             )
     cluster_handler.perform_prediction()
     cluster_handler.remove_outliers(params_dict)
+    cluster_handler.calc_mahalanobis_distance_matrix()
     cluster_handler.save_cluster_labels()
-
     cluster_handler.create_output_plots(params_dict)
     cluster_handler.create_classifier_plots(classifier_handler)
 
