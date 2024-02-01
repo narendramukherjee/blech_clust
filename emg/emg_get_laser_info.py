@@ -120,8 +120,24 @@ hf5.create_group('/', 'ancillary_analysis')
 # these are the same irrespective of the unit and time
 unique_lasers = np.array(list(fin_unique_tuples))
 
+# Pad tuples for uneven trials
+max_trials = np.max([len(x) for x in corrected_tuples])
+
+padded_tuples = []
+for dig_ind in range(len(corrected_tuples)):
+    dig_tuples = []
+    dig_dat = corrected_tuples[dig_ind]
+    for trial_ind in range(max_trials):
+        if trial_ind < len(dig_dat):
+            this_dat = dig_dat[trial_ind]
+        else:
+            this_dat = (np.nan, np.nan)
+        dig_tuples.append(this_dat)
+    padded_tuples.append(dig_tuples)
+
+
 # Now get the sets of trials with these unique duration and lag combinations
-concat_laser_tuples = np.concatenate(corrected_tuples)
+concat_laser_tuples = np.concatenate(padded_tuples)
 trials = np.stack(
         [
             [

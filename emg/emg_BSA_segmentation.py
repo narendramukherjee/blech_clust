@@ -100,8 +100,7 @@ for num, this_dir in enumerate(channels_discovered):
     # Instead of messing around with weird indices, use dataframe to 
     # keep track of tastes and laser conditions
     trials_frame = pd.DataFrame(
-            #data = dict(laser_cond = np.zeros(emg_BSA_results.shape[0]).astype('int'))
-            data = dict(laser_cond = np.zeros(len(flat_trials)).astype('int'))
+            data = dict(laser_cond = np.zeros(num_tastes * num_trials).astype('int'))
             ) 
     for cond_num, inds in enumerate(trials):
         trials_frame.loc[inds, 'laser_cond'] = cond_num
@@ -124,16 +123,6 @@ for num, this_dir in enumerate(channels_discovered):
         final_gapes[this_laser, this_taste] = gapes[wanted_trial_inds] 
         final_ltps[this_laser, this_taste] = ltps[wanted_trial_inds] 
         final_sig_trials[this_laser, this_taste] = sig_trials[wanted_trial_inds] 
-
-    ## Fill up these arrays
-    #for cond_num, this_trial_vec in enumerate(trials):
-    #    for trial_ind, trial_num in enumerate(this_trial_vec): 
-    #        taste_ind = trial_num // num_trials
-    #        mod_trial_ind = trial_num % num_trials
-    #        final_emg_BSA_results[cond_num, taste_ind, mod_trial_ind] = emg_BSA_results[trial_num] 
-    #        final_gapes[cond_num, taste_ind, mod_trial_ind] = gapes[trial_num] 
-    #        final_ltps[cond_num, taste_ind, mod_trial_ind] = ltps[trial_num] 
-    #        final_sig_trials[cond_num, taste_ind, mod_trial_ind] = sig_trials[trial_num] 
 
     final_gapes_list.append(final_gapes)
     final_ltps_list.append(final_ltps)
