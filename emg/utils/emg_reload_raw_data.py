@@ -55,6 +55,8 @@ if '/raw_emg' in hf5:
 # Create raw_emg group in HDF5 file
 hf5.create_group('/', 'raw_emg')
 
+hf5.close()
+
 # Get the amplifier ports used
 ports = list(set(f[4] for f in file_list if f[:3] == 'amp'))
 # Sort the ports in alphabetical order
@@ -70,23 +72,28 @@ emg_channels = sorted(emg_info['electrodes'])
 layout_path = glob.glob(os.path.join(dir_name,"*layout.csv"))[0]
 electrode_layout_frame = pd.read_csv(layout_path) 
 
-# Read EMG data from amplifier channels
-atom = tables.IntAtom()
-emg_counter = 0
-#for port in ports:
-for num,row in tqdm(electrode_layout_frame.iterrows()):
-    # Loading should use file name 
-    # but writing should use channel ind so that channels from 
-    # multiple boards are written into a monotonic sequence
-    if 'emg' in row.CAR_group.lower():
-        print(f'Reading : {row.filename, row.CAR_group}')
-        port = row.port
-        channel_ind = row.electrode_ind
-        data = np.fromfile(row.filename, dtype = np.dtype('int16'))
-        el = hf5.create_earray('/raw_emg', f'emg{emg_counter:02}', atom, (0,))
-        exec(f"hf5.root.raw_emg.emg{emg_counter:02}."\
-                "append(data[:])")
-        emg_counter += 1
-        hf5.flush()
+read_file.read_emg_channels(
+        hdf5_name,
+        electrode_layout_frame,
+        )
 
-hf5.close()
+# # Read EMG data from amplifier channels
+# atom = tables.IntAtom()
+# emg_counter = 0
+# #for port in ports:
+# for num,row in tqdm(electrode_layout_frame.iterrows()):
+#     # Loading should use file name 
+#     # but writing should use channel ind so that channels from 
+#     # multiple boards are written into a monotonic sequence
+#     if 'emg' in row.CAR_group.lower():
+#         print(f'Reading : {row.filename, row.CAR_group}')
+#         port = row.port
+#         channel_ind = row.electrode_ind
+#         data = np.fromfile(row.filename, dtype = np.dtype('int16'))
+#         el = hf5.create_earray('/raw_emg', f'emg{emg_counter:02}', atom, (0,))
+#         exec(f"hf5.root.raw_emg.emg{emg_counter:02}."\
+#                 "append(data[:])")
+#         emg_counter += 1
+#         hf5.flush()
+# 
+# hf5.close()
