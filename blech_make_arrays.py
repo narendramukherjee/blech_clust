@@ -21,15 +21,14 @@ def get_dig_in_data(hf5):
     return dig_in_pathname, dig_in_basename, dig_in_data
 
 def create_spike_trains_for_digin(
-        taste_starts_cutoff,
-        this_dig_in,
+        this_starts,
         durations,
         sampling_rate_ms,
         units,
         hf5,
         ):
         spike_train = []
-        for this_start in this_dig_in: 
+        for this_start in this_starts: 
             spikes = np.zeros((len(units), durations[0] + durations[1]))
             for k in range(len(units)):
                 # Get the spike times around the end of taste delivery
@@ -61,27 +60,32 @@ def create_spike_trains_for_digin(
         hf5.flush()
 
 def create_emg_trials_for_digin(
-        taste_starts_cutoff,
-        this_dig_in,
+        this_starts,
         durations,
         sampling_rate_ms,
         emg_nodes,
         hf5,
         ):
-        emg_data = []
-        for this_start in this_dig_in: 
-            for this_emg in emg_nodes:
-                emg_data.append(this_emg[this_start - durations[0]*sampling_rate_ms:\
-                        this_start + durations[1]*sampling_rate_ms])
-        emg_data = np.stack(emg_data, axis=0)*0.195
+        emg_data = [[this_emg[this_start - durations[0]*sampling_rate_ms:\
+                        this_start + durations[1]*sampling_rate_ms] \
+                        for this_start in this_starts]
+                        for this_emg in emg_nodes]
+        emg_data = np.stack(emg_data)*0.195
 
         emg_data =  np.mean(
-                    emg_data.reshape((len(emg_data),-1, int(sampling_rate_ms))), 
+                emg_data.reshape((*emg_data.shape[:2],-1, int(sampling_rate_ms))), 
                     axis = -1)
+
+        # Write out ind:name map for each node
+        ind_name_map = {i:node._v_name for i,node in enumerate(emg_nodes)}
+        str_dict = str(ind_name_map)
+        if '/emg_data/ind_electrode_map' in hf5:
+            hf5.remove_node('/emg_data','ind_electrode_map')
+        hf5.create_array('/emg_data', 'ind_electrode_map', np.array(str_dict))
 
         # And add emg_data to the hdf5 file
         hf5.create_group('/emg_data', dig_in_basename[i])
-        spike_array = hf5.create_array(
+        hf5.create_array(
                 f'/emg_data/{dig_in_basename[i]}', 
                 'emg_array', np.array(emg_data))
         hf5.flush()
@@ -95,8 +99,6 @@ if __name__ == '__main__':
     # Ask for the directory where the hdf5 file sits, and change to that directory
     # Get name of directory with the data files
     metadata_handler = imp_metadata(sys.argv)
-    dir_name = '/media/bigdata/NM43_2500ms_160515_104159_copy' 
-    metadata_handler = imp_metadata([[],dir_name])
     os.chdir(metadata_handler.dir_name)
     print(f'Processing: {metadata_handler.dir_name}')
 
@@ -232,7 +234,7 @@ if __name__ == '__main__':
     hf5.close()
     trial_info_frame.to_hdf(metadata_handler.hdf5_name, 'trial_info_frame', mode='a')
     hf5 = tables.open_file(metadata_handler.hdf5_name, 'r+')
-    csv_path = os.path.join(dir_name, 'trial_info_frame.csv')
+    csv_path = os.path.join(metadata_handler.dir_name, 'trial_info_frame.csv')
     trial_info_frame.to_csv(csv_path, index=False)
 
     # Get list of units under the sorted_units group. 
@@ -244,26 +246,24 @@ if __name__ == '__main__':
     #============================================================#
     # NOTE: Calculate headstage falling off same way for all not "none" channels 
     # Pull out raw_electrode and raw_emg data
-    if '/raw' in hf5:
-        raw_electrodes = [x for x in hf5.get_node('/','raw')]
-    else:
-        raw_electrodes = []
+
+    # If sorting hasn't been done, use only emg channels
+    # to calculate cutoff...don't need to go through all channels
+
     if '/raw_emg' in hf5:
         raw_emg_electrodes = [x for x in hf5.get_node('/','raw_emg')]
     else:
         raw_emg_electrodes = []
 
-    all_electrodes = [raw_electrodes, raw_emg_electrodes] 
-    all_electrodes = [x for y in all_electrodes for x in y]
-    # If raw channel data is present, use that to calcualte cutoff
-    # This would explicitly be the case if only EMG was recorded
-    if len(all_electrodes) > 0:
-        all_electrode_names = [x._v_pathname for x in all_electrodes]
-        electrode_names = list(zip(*[x.split('/')[1:] for x in all_electrode_names]))
+    if len(raw_emg_electrodes) > 0:
+        emg_electrode_names = [x._v_pathname for x in raw_emg_electrodes]
+        electrode_names = list(zip(*[x.split('/')[1:] for x in emg_electrode_names]))
 
-        print('Calculating cutoff times')
+        print('Calculating cutoff times using following EMG electrodes...')
+        print(emg_electrode_names)
+        print('===============================================')
         cutoff_data = []
-        for this_el in tqdm(all_electrodes): 
+        for this_el in tqdm(raw_emg_electrodes): 
             raw_el = this_el[:]
             # High bandpass filter the raw electrode recordings
             filt_el = get_filtered_electrode(
@@ -302,8 +302,8 @@ if __name__ == '__main__':
                     'recording_cutoff'
                     ],
                 )
-        elec_cutoff_frame['electrode_type'] = all_electrode_names[0]
-        elec_cutoff_frame['electrode_name'] = all_electrode_names[1]
+        elec_cutoff_frame['electrode_type'] = electrode_names[0]
+        elec_cutoff_frame['electrode_name'] = electrode_names[1]
 
         # Write out to HDF5
         hf5.close()
@@ -357,11 +357,10 @@ if __name__ == '__main__':
         hf5.create_group('/', 'spike_trains')
 
         # Pull out spike trains
-        for i, this_dig_in in zip(taste_digin_inds, taste_starts_cutoff): 
+        for i, this_starts in zip(taste_digin_inds, taste_starts_cutoff): 
             print(f'Creating spike-trains for {dig_in_basename[i]}')
             create_spike_trains_for_digin(
-                    taste_starts_cutoff,
-                    this_dig_in,
+                    this_starts,
                     durations,
                     sampling_rate_ms,
                     units,
@@ -387,11 +386,10 @@ if __name__ == '__main__':
         hf5.create_group('/', 'emg_data')
 
         # Pull out emg trials 
-        for i, this_dig_in in zip(taste_digin_inds, taste_starts_cutoff): 
+        for i, this_starts in zip(taste_digin_inds, taste_starts_cutoff): 
             print(f'Creating emg-trials for {dig_in_basename[i]}')
             create_emg_trials_for_digin(
-                    taste_starts_cutoff,
-                    this_dig_in,
+                    this_starts,
                     durations,
                     sampling_rate_ms,
                     emg_nodes,

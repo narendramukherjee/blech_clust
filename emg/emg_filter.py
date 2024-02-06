@@ -8,19 +8,33 @@ import sys
 import shutil
 import glob
 import pandas as pd
+import tables
+import ast
 
 sys.path.append('..')
 from utils.blech_utils import imp_metadata
 
 # Get name of directory with the data files
-metadata_handler = imp_metadata(sys.argv)
+# metadata_handler = imp_metadata(sys.argv)
+dir_name = '/media/bigdata/NM43_2500ms_160515_104159_copy' 
+metadata_handler = imp_metadata([[],dir_name])
 dir_name = metadata_handler.dir_name
 os.chdir(dir_name)
 print(f'Processing : {dir_name}')
 
+############################################################
 # Load the data
 # shape : channels x tastes x trials x time
-emg_data = np.load('emg_output/emg_data.npy')
+# emg_data = np.load('emg_output/emg_data.npy')
+with tables.open_file(metadata_handler.hdf5_name, 'r') as hf5:
+    emg_digins = hf5.list_nodes('/emg_data')
+    emg_digins = [x for x in emg_digins if 'dig_in' in x._v_name]
+    emg_digin_names = [x._v_name for x in emg_digins]
+    emg_data = [x.emg_array[:] for x in emg_digins]
+    map_array = hf5.get_node('/emg_data/ind_electrode_map').read()
+ind_electrode_map = ast.literal_eval(str(map_array)[2:-1])
+# key = electrode_ind, value = index in array
+inverse_map = {int(v.split('emg')[1]): k for k, v in ind_electrode_map.items()}
 
 info_dict = metadata_handler.info_dict
 params_dict = metadata_handler.params_dict
@@ -49,16 +63,13 @@ wanted_rows = pd.DataFrame(
 wanted_rows = wanted_rows.sort_values('electrode_ind')
 wanted_rows.reset_index(inplace=True, drop=True)
 
-print('Using electrodes :')
-print(wanted_rows)
-print()
-
 # TODO: Ask about differencing pairs
 # Difference by CAR emg labels
 # If only 1 channel per emg CAR, do not difference if asked
 emg_car_groups = [x[1] for x in wanted_rows.groupby('CAR_group')]
 emg_car_names = [x.CAR_group.unique()[0] for x in emg_car_groups]
-emg_car_inds = [x.index.values for x in emg_car_groups]
+# emg_car_inds = [x.index.values for x in emg_car_groups]
+emg_car_inds = [[inverse_map[x] for x in y.electrode_ind.values] for y in emg_car_groups]
 
 print('EMG CAR Groups with more than 1 channel will be differenced')
 print('EMG CAR groups as follows:')
@@ -67,45 +78,76 @@ for x in emg_car_groups:
     print()
 
 # TODO: This question can go into an EMG params file
-# todo: Rename to diff_data at this stage
 # Bandpass filter the emg signals, and store them in a numpy array. 
 # Low pass filter the bandpassed signals, and store them in another array
 # Take difference between pairs of channels
-# Shape : Channels x Tastes x Trials x Time
-emg_data_grouped = [emg_data[x] for x in emg_car_inds]
-emg_diff_data = []
+# emg_data = List of arrays (per dig-in) of shape : channels x trials x time
+# emg_data_grouped = list of lists
+#       outer list : emg CAR groups 
+#       inner list : dig-ins 
+#       element_array : channels x trials x time
+emg_data_grouped = [[dat[x] for dat in emg_data] for x in emg_car_inds]
+# Make sure all element arrays are 3D with shape: channels x trials x time
 for x in emg_data_grouped:
-    if len(x) > 1:
-        emg_diff_data.append(np.squeeze(np.diff(x,axis=0)))
-    elif len(x) > 2:
-        raise Exception("More than 2 per EMG CAR currently not supported")
-    else:
-        emg_diff_data.append(np.squeeze(x))
+    for y in x:
+        if len(y.shape) < 3:
+            y = np.expand_dims(y, axis=0)
+
+emg_diff_data = []
+for this_car in emg_data_grouped:
+    this_car_diff = []
+    for this_dig in this_car:
+        if len(this_dig) > 1:
+            this_car_diff.append(np.squeeze(np.diff(this_dig,axis=0)))
+        elif len(this_dig) > 2:
+            raise Exception("More than 2 per EMG CAR currently not supported")
+        else:
+            this_car_diff.append(np.squeeze(this_dig))
+    emg_diff_data.append(this_car_diff)
 
 # Iterate over trials and apply frequency filter
-iters = list(np.ndindex(emg_diff_data[0].shape[:-1])) 
 emg_filt_list = []
 emg_env_list = []
-for x in emg_diff_data:
-    emg_filt = np.zeros(x.shape)
-    emg_env = np.zeros(x.shape)
-    for this_iter in iters:
-        temp_filt = filtfilt(m, n, x[this_iter[0], this_iter[1]])
-        emg_filt[this_iter[0], this_iter[1]] = temp_filt 
-        emg_env[this_iter[0], this_iter[1]] = filtfilt(c, d, np.abs(temp_filt))
-    emg_filt_list.append(emg_filt)
-    emg_env_list.append(emg_env)
+for car_group in emg_diff_data:
+    this_car_filt = []
+    this_car_env = []
+    for dig_in in car_group:
+        emg_filt = np.zeros(dig_in.shape)
+        emg_env = np.zeros(dig_in.shape)
+        temp_filt = filtfilt(m, n, dig_in)
+        temp_env = filtfilt(c, d, np.abs(temp_filt))
+        this_car_filt.append(temp_filt)
+        this_car_env.append(temp_env)
+    emg_filt_list.append(this_car_filt)
+    emg_env_list.append(this_car_env)
+
+# Iterate and check for signficant changes in activity
+n_cars = len(emg_diff_data)
+n_dig = len(emg_diff_data[0])
+trial_lens = [[len(x) for x in y] for y in emg_diff_data]
+
+ind_frame = pd.DataFrame(
+        dict(
+            car_group = [x for x in range(n_cars) for y in range(n_dig)],
+            dig_in = [y for x in range(n_cars) for y in range(n_dig)],
+            trial_len = [np.arange(trial_lens[x][y]) for x in range(n_cars) for y in range(n_dig)]
+            )
+        )
+# Explode the trial_len column
+ind_frame = ind_frame.explode('trial_len')
 
 sig_trials_list = []
-for i in range(len(emg_diff_data)):
+for i, this_row in ind_frame.iterrows(): 
+    this_ind = this_row.values
+    this_dat = emg_filt_list[this_ind[0]][this_ind[1]][this_ind[2]]
     ## Get mean and std of baseline emg activity, 
     ## and use it to select trials that have significant post stimulus activity
     # sig_trials (assumed shape) : tastes x trials
-    pre_m = np.mean(np.abs(emg_filt_list[i][...,:pre_stim]), axis = (2))
-    pre_s = np.std(np.abs(emg_filt_list[i][...,:pre_stim]), axis = (2))
+    pre_m = np.mean(np.abs(this_dat[pre_stim]))
+    pre_s = np.std(np.abs(this_dat[pre_stim]))
 
-    post_m = np.mean(np.abs(emg_filt_list[i][...,pre_stim:]), axis = (2))
-    post_max = np.max(np.abs(emg_filt_list[i][...,pre_stim:]), axis = (2))
+    post_m = np.mean(np.abs(this_dat[pre_stim:]))
+    post_max = np.max(np.abs(this_dat[pre_stim:]))
 
     # If any of the channels passes the criteria, select that trial as significant
     # 1) mean post-stim activity > mean pre-stim activity
@@ -119,19 +161,34 @@ for i in range(len(emg_diff_data)):
     sig_trials = mean_bool * std_bool
     sig_trials_list.append(sig_trials)
 
+ind_frame['sig_trials'] = sig_trials_list
+
 # NOTE: Currently DIFFERENT sig_trials for each channel 
 # Save the highpass filtered signal, 
 # the envelope and the indicator of significant trials as a np array
 # Iterate over channels and save them in different directories 
-for num,this_name in enumerate(emg_car_names): 
-    #dir_path = f'emg_output/emg_channel{num}'
-    dir_path = f'emg_output/{this_name}'
-    if os.path.exists(dir_path):
-        shutil.rmtree(dir_path)
-    os.makedirs(dir_path)
-    # emg_filt (output shape): tastes x trials x time
-    np.save(os.path.join(dir_path, f'emg_filt.npy'), emg_filt_list[num])
-    # env (output shape): tastes x trials x time
-    np.save(os.path.join(dir_path, f'emg_env.npy'), emg_env_list[num])
-    # sig_trials (output shape): tastes x trials
-    np.save(os.path.join(dir_path, 'sig_trials.npy'), sig_trials_list[num])
+ind_frame.to_hdf(metadata_handler.hdf5_name, '/emd_data/emg_sig_trials')
+
+with tables.open_file(metadata_handler.hdf5_name, 'r+') as hf5:
+    for digin_ind, digin_name in enumerate(emg_digin_names):
+        digin_path = f'/emg_data/{digin_name}'
+        if f'{digin_path}/processed_emg' in hf5:
+            hf5.remove_node(f'{digin_path}/processed_emg')
+        hf5.create_group(f'{digin_path}', 'processed_emg')
+        for car_ind , this_car_name in enumerate(emg_car_names): 
+            # emg_filt (output shape): tastes x trials x time
+            # np.save(os.path.join(dir_path, f'emg_filt.npy'), emg_filt_list[num])
+            hf5.create_array(
+                    f'{digin_path}/processed_emg', 
+                    f'{this_car_name}_emg_filt', 
+                    emg_filt_list[car_ind][digin_ind]
+                    )
+            # env (output shape): tastes x trials x time
+            # np.save(os.path.join(dir_path, f'emg_env.npy'), emg_env_list[num])
+            hf5.create_array(
+                    f'{digin_path}/processed_emg',
+                    f'{this_car_name}_emg_env',
+                    emg_env_list[car_ind][digin_ind]
+                    )
+            # sig_trials (output shape): tastes x trials
+            # np.save(os.path.join(dir_path, 'sig_trials.npy'), sig_trials_list[num])
