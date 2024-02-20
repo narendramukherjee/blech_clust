@@ -173,7 +173,7 @@ if __name__ == '__main__':
     taste_grouped = taste_info_frame.groupby('dig_in_num')
     fin_group = []
     for name, group in taste_grouped:
-        group['taste_rel_trial_num'] = np.arange(1,group.shape[0]+1)
+        group['taste_rel_trial_num'] = np.arange(group.shape[0])
         fin_group.append(group)
     taste_info_frame = pd.concat(fin_group)
     taste_info_frame.sort_values(by=['start'],inplace=True)
@@ -225,8 +225,30 @@ if __name__ == '__main__':
     sec_cols = ['start_taste','end_taste','start_laser','end_laser',
                'laser_duration','laser_lag']
     for col in sec_cols:
-        new_col_name = col + '_sec'
-        trial_info_frame[new_col_name] = trial_info_frame[col] / sampling_rate
+        new_col_name = col + '_ms'
+        trial_info_frame[new_col_name] = (trial_info_frame[col] / sampling_rate)*1000
+
+    ###############
+    # Correct laser timing using info_dict
+    # Assume only 1 laser condition!!
+
+    print('=====================')
+    print('Correcting laser timing using info_dict')
+    print('Assuming only 1 laser condition')
+    print('=====================')
+
+    laser_onset = info_dict['laser_params']['onset']
+    laser_duration = info_dict['laser_params']['duration']
+
+    trial_info_frame['laser_duration_ms'].fillna(0, inplace=True)
+    trial_info_frame['laser_lag_ms'].fillna(0, inplace=True)
+
+    if isinstance(laser_onset, int):
+        nonzero_inds = trial_info_frame['laser_duration_ms'] > 0
+        trial_info_frame.loc[nonzero_inds,'laser_lag_ms'] = laser_onset
+        trial_info_frame.loc[nonzero_inds,'laser_duration_ms'] = laser_duration
+        
+    ###############
 
     ##############################
     # Save trial info frame to hdf5 file and csv

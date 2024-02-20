@@ -15,9 +15,7 @@ sys.path.append('..')
 from utils.blech_utils import imp_metadata
 
 # Get name of directory with the data files
-# metadata_handler = imp_metadata(sys.argv)
-dir_name = '/media/bigdata/NM43_2500ms_160515_104159_copy' 
-metadata_handler = imp_metadata([[],dir_name])
+metadata_handler = imp_metadata(sys.argv)
 dir_name = metadata_handler.dir_name
 os.chdir(dir_name)
 print(f'Processing : {dir_name}')
@@ -167,13 +165,13 @@ ind_frame['sig_trials'] = sig_trials_list
 # Save the highpass filtered signal, 
 # the envelope and the indicator of significant trials as a np array
 # Iterate over channels and save them in different directories 
-ind_frame.to_hdf(metadata_handler.hdf5_name, '/emd_data/emg_sig_trials')
+ind_frame.to_hdf(metadata_handler.hdf5_name, '/emg_data/emg_sig_trials')
 
 with tables.open_file(metadata_handler.hdf5_name, 'r+') as hf5:
     for digin_ind, digin_name in enumerate(emg_digin_names):
         digin_path = f'/emg_data/{digin_name}'
         if f'{digin_path}/processed_emg' in hf5:
-            hf5.remove_node(f'{digin_path}/processed_emg')
+            hf5.remove_node(f'{digin_path}/processed_emg', recursive = True)
         hf5.create_group(f'{digin_path}', 'processed_emg')
         for car_ind , this_car_name in enumerate(emg_car_names): 
             # emg_filt (output shape): tastes x trials x time

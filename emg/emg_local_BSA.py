@@ -13,6 +13,8 @@ import sys
 import shutil
 from glob import glob
 import json
+import tables
+import pandas as pd
 
 sys.path.append('..')
 from utils.blech_utils import imp_metadata
@@ -20,6 +22,8 @@ from utils.blech_process_utils import path_handler
 
 # Get name of directory with the data files
 metadata_handler = imp_metadata(sys.argv)
+# dir_name = '/media/bigdata/nm43_2500ms_160515_104159_copy' 
+# metadata_handler = imp_metadata([[],dir_name])
 data_dir = metadata_handler.dir_name
 os.chdir(data_dir)
 print(f'Processing : {data_dir}')
@@ -45,71 +49,117 @@ if not os.path.exists(emg_params_path):
 emg_params_dict = json.load(open(emg_params_path, 'r'))
 use_BSA_bool = emg_params_dict['use_BSA']
 
+hf5 = tables.open_file(metadata_handler.hdf5_name, 'r')
+
+# Get all emg_env data
+# Structure /emg_data/dig_in_<xx>/processed_emg/<xx>_emg_env
+dig_in_nodes = hf5.list_nodes('/emg_data')
+dig_in_nodes = [x for x in dig_in_nodes if 'dig_in' in x._v_name]
+emg_env_node_names = []
+emg_env_data = []
+for node in dig_in_nodes:
+    node_list = hf5.list_nodes(
+            os.path.join(node._v_pathname, 'processed_emg'),
+                               classname='Array')
+    node_list = [x for x in node_list if 'emg_env' in x._v_name]
+    dat_list = [x.read() for x in node_list]
+    emg_env_data.extend(dat_list)
+    emg_env_node_names.extend([x._v_pathname for x in node_list])
+
+# Save everything as pandas dataframe
+dig_in_list = [x.split('/')[2] for x in emg_env_node_names]
+car_list = [x.split('_')[-3].split('/')[1] for x in emg_env_node_names]
+trial_lens = [x.shape[0] for x in emg_env_data]
+
+fin_dig_list = [[x]*y for x,y in zip(dig_in_list, trial_lens)]
+fin_car_list = [[x]*y for x,y in zip(car_list, trial_lens)]
+fin_dig_list = [item for sublist in fin_dig_list for item in sublist]
+fin_car_list = [item for sublist in fin_car_list for item in sublist]
+trial_inds = [list(range(x)) for x in trial_lens]
+trial_inds = [item for sublist in trial_inds for item in sublist]
+flat_emg_env_data = np.stack(
+        [item for sublist in emg_env_data for item in sublist]
+         )
+
+emg_env_df = pd.DataFrame(
+        dict(
+            dig_in = fin_dig_list,
+            car = fin_car_list,
+            trial_inds = trial_inds,
+            )
+        )
+
+
 emg_output_dir = os.path.join(data_dir, 'emg_output')
 print(f'emg_output_dir: {emg_output_dir}')
-# Get dirs for each emg CAR
-dir_list = glob(os.path.join(emg_output_dir,'emg*'))
-dir_list = [x for x in dir_list if os.path.isdir(x)]
+os.chdir(emg_output_dir)  
 
-for num, dir_name in enumerate(dir_list): 
-    print(f'Processing {dir_name}')
-    #if 'emg_channel' not in os.path.basename(dir_name[:-1]):
-    if 'emg_env.npy' not in os.listdir(dir_name):
-        raise Exception(f'emg_env.py not found for {dir_name}')
-        exit()
+# Write the emg_env data to a file
+emg_env_df.to_csv('emg_env_df.csv')
+np.save('flat_emg_env_data.npy', flat_emg_env_data)
 
-    os.chdir(dir_name)
+# # Get dirs for each emg CAR
+# dir_list = glob(os.path.join(emg_output_dir,'emg*'))
+# dir_list = [x for x in dir_list if os.path.isdir(x)]
+# 
+# for num, dir_name in enumerate(dir_list): 
 
-    print('Deleting emg_BSA_results')
-    if os.path.exists('emg_BSA_results'):
-        shutil.rmtree('emg_BSA_results')
-    os.makedirs('emg_BSA_results')
-
-    # Also delete log
-    print('Deleting results.log')
-    if os.path.exists('results.log'):
-        os.remove('results.log')
-
-    # Load the data files
-    #env = np.load('./emg_0/env.npy')
-    #sig_trials = np.load('./emg_0/sig_trials.npy')
-    env = np.load('./emg_env.npy')
-    sig_trials = np.load('./sig_trials.npy')
+# print(f'Processing {dir_name}')
+# #if 'emg_channel' not in os.path.basename(dir_name[:-1]):
+# if 'emg_env.npy' not in os.listdir(dir_name):
+#     raise Exception(f'emg_env.py not found for {dir_name}')
+#     exit()
+# 
+# os.chdir(dir_name)
 
 
-    # Dump shell file(s) for running GNU parallel job on the 
-    # user's blech_clust folder on the desktop
-    # First get number of CPUs - parallel be asked to run num_cpu-1 
-    # threads in parallel
-    num_cpu = multiprocessing.cpu_count()
-    # Then produce the file generating the parallel command
-    f = open(os.path.join(blech_emg_dir,'blech_emg_jetstream_parallel.sh'), 'w')
-    format_args = (
-            int(num_cpu)-1, 
-            dir_name, 
-            sig_trials.shape[0]*sig_trials.shape[1])
-    print(
-            "parallel -k -j {:d} --noswap --load 100% --progress --ungroup --joblog {:s}/results.log bash blech_emg_jetstream_parallel1.sh ::: {{1..{:d}}}".format(*format_args), 
-            file = f)
-    f.close()
+print('Deleting emg_BSA_results')
+if os.path.exists('emg_BSA_results'):
+    shutil.rmtree('emg_BSA_results')
+os.makedirs('emg_BSA_results')
 
-    # Then produce the file that runs blech_process.py
-    if use_BSA_bool:
-        file_name = 'emg_local_BSA_execute.py'
-        print(' === Using BSA for frequency estimation ===')
-    else:
-        file_name = 'emg_local_STFT_execute.py'
-        print(' === Using STFT for frequency estimation ===')
-    f = open(os.path.join(blech_emg_dir,'blech_emg_jetstream_parallel1.sh'), 'w')
-    print("export OMP_NUM_THREADS=1", file = f)
-    print(f"python {file_name} $1", file = f)
-    f.close()
+# Also delete log
+print('Deleting results.log')
+if os.path.exists('results.log'):
+    os.remove('results.log')
 
-    # Finally dump a file with the data directory's location (blech.dir)
-    # If there is more than one emg group, this will iterate over them
-    if num == 0:
-        f = open(os.path.join(blech_emg_dir,'BSA_run.dir'), 'w')
-    else:
-        f = open(os.path.join(blech_emg_dir,'BSA_run.dir'), 'a')
-    print(dir_name, file = f)
-    f.close()
+# Load the data files
+#env = np.load('./emg_0/env.npy')
+#sig_trials = np.load('./emg_0/sig_trials.npy')
+# env = np.load('./emg_env.npy')
+# sig_trials = np.load('./sig_trials.npy')
+
+
+# Dump shell file(s) for running GNU parallel job on the 
+# user's blech_clust folder on the desktop
+# First get number of CPUs - parallel be asked to run num_cpu-1 
+# threads in parallel
+num_cpu = multiprocessing.cpu_count()
+# Then produce the file generating the parallel command
+f = open(os.path.join(blech_emg_dir,'blech_emg_jetstream_parallel.sh'), 'w')
+format_args = (
+        int(num_cpu)-1, 
+        dir_name, 
+        len(emg_env_df)-1)
+print(
+        "parallel -k -j {:d} --noswap --load 100% --progress --ungroup --joblog {:s}/results.log bash blech_emg_jetstream_parallel1.sh ::: {{0..{:d}}}".format(*format_args), 
+        file = f)
+f.close()
+
+# Then produce the file that runs blech_process.py
+if use_BSA_bool:
+    file_name = 'emg_local_BSA_execute.py'
+    print(' === Using BSA for frequency estimation ===')
+else:
+    file_name = 'emg_local_STFT_execute.py'
+    print(' === Using STFT for frequency estimation ===')
+f = open(os.path.join(blech_emg_dir,'blech_emg_jetstream_parallel1.sh'), 'w')
+print("export OMP_NUM_THREADS=1", file = f)
+print(f"python {file_name} $1", file = f)
+f.close()
+
+# Finally dump a file with the data directory's location (blech.dir)
+# If there is more than one emg group, this will iterate over them
+f = open(os.path.join(blech_emg_dir,'BSA_run.dir'), 'w')
+print(dir_name, file = f)
+f.close()
