@@ -40,9 +40,6 @@ info_dict = metadata_handler.info_dict
 taste_names = info_dict['taste_params']['tastes']
 
 # Use trial count from emg_data to account for chopping down of trials
-# emg_data = np.load(os.path.join('emg_output','emg_data.npy'))
-# emg_data = np.load(os.path.join('emg_output','flat_emg_env_data.npy'))
-# trials = [emg_data.shape[2]]*emg_data.shape[1]
 emg_trials_frame = pd.read_csv('emg_output/emg_env_df.csv', index_col = 0)
 
 # Also get trial_info_frame
@@ -99,5 +96,5 @@ ltp_flat = p_flat >= 5.5
 
 # Write out
 np.save('emg_output/gape_array.npy', gape_array)
-np.save('emg_output/ltp_flat.npy', ltp_flat)
+np.save('emg_output/ltp_array.npy', ltp_flat)
 
