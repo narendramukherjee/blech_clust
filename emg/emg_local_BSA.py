@@ -22,8 +22,6 @@ from utils.blech_process_utils import path_handler
 
 # Get name of directory with the data files
 metadata_handler = imp_metadata(sys.argv)
-# dir_name = '/media/bigdata/nm43_2500ms_160515_104159_copy' 
-# metadata_handler = imp_metadata([[],dir_name])
 data_dir = metadata_handler.dir_name
 os.chdir(data_dir)
 print(f'Processing : {data_dir}')
@@ -100,21 +98,6 @@ os.chdir(emg_output_dir)
 emg_env_df.to_csv('emg_env_df.csv')
 np.save('flat_emg_env_data.npy', flat_emg_env_data)
 
-# # Get dirs for each emg CAR
-# dir_list = glob(os.path.join(emg_output_dir,'emg*'))
-# dir_list = [x for x in dir_list if os.path.isdir(x)]
-# 
-# for num, dir_name in enumerate(dir_list): 
-
-# print(f'Processing {dir_name}')
-# #if 'emg_channel' not in os.path.basename(dir_name[:-1]):
-# if 'emg_env.npy' not in os.listdir(dir_name):
-#     raise Exception(f'emg_env.py not found for {dir_name}')
-#     exit()
-# 
-# os.chdir(dir_name)
-
-
 print('Deleting emg_BSA_results')
 if os.path.exists('emg_BSA_results'):
     shutil.rmtree('emg_BSA_results')
@@ -124,13 +107,6 @@ os.makedirs('emg_BSA_results')
 print('Deleting results.log')
 if os.path.exists('results.log'):
     os.remove('results.log')
-
-# Load the data files
-#env = np.load('./emg_0/env.npy')
-#sig_trials = np.load('./emg_0/sig_trials.npy')
-# env = np.load('./emg_env.npy')
-# sig_trials = np.load('./sig_trials.npy')
-
 
 # Dump shell file(s) for running GNU parallel job on the 
 # user's blech_clust folder on the desktop

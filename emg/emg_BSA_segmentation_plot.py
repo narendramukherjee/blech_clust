@@ -19,8 +19,6 @@ from utils.blech_utils import imp_metadata
 # Ask for the directory where the hdf5 file sits, and change to that directory
 # Get name of directory with the data files
 metadata_handler = imp_metadata(sys.argv)
-# dir_name = '/media/bigdata/NM43_2500ms_160515_104159_copy' 
-# metadata_handler = imp_metadata([[],dir_name])
 dir_name = metadata_handler.dir_name
 info_dict = metadata_handler.info_dict
 params_dict = metadata_handler.params_dict
@@ -113,6 +111,9 @@ for plot_name, plot_data in zip(['gapes', 'ltps'], [gapes, ltps]):
                     linewidth = 2, alpha = 0.7)
             # this_ax.set_yticks(np.arange(this_plot_data.shape[0])+0.5)
             # this_ax.set_yticklabels(this_data_inds)
+        for this_ax in ax[-1,:]:
+            this_ax.set_xlabel('Time post-stim (ms)')
+        fig.suptitle(f'{this_car.car.unique()[0]} : {plot_name}')
         fig.savefig(
                 os.path.join(
                     plot_dir,
@@ -137,6 +138,7 @@ g.fig.suptitle('Taste Overlay')
 # Plot dashed line as x=0
 for ax in g.axes.flatten():
     ax.axvline(0, color = 'red', linestyle = '--', linewidth = 2, alpha = 0.7)
+plt.tight_layout()
 g.savefig(
         os.path.join(
             plot_dir,
@@ -162,6 +164,7 @@ g.fig.suptitle('Laser Overlay')
 # Plot dashed line as x=0
 for ax in g.axes.flatten():
     ax.axvline(0, color = 'red', linestyle = '--', linewidth = 2, alpha = 0.7)
+plt.tight_layout()
 g.savefig(
         os.path.join(
             plot_dir,

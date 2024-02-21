@@ -98,8 +98,6 @@ if __name__ == '__main__':
 
     # Ask for the directory where the hdf5 file sits, and change to that directory
     # Get name of directory with the data files
-    dir_name = '/media/fastdata/KM45/KM45_5tastes_210620_113227_new'
-    sys.argv = [sys.argv[0], dir_name]
 
     metadata_handler = imp_metadata(sys.argv)
     os.chdir(metadata_handler.dir_name)
