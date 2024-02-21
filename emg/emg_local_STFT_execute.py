@@ -108,7 +108,6 @@ if not os.path.exists(emg_params_path):
 emg_params_dict = json.load(open(emg_params_path, 'r'))
 stft_params = emg_params_dict['stft_params']
 
-
 ##############################
 # Calculate STFT 
 ##############################
@@ -127,19 +126,10 @@ os.chdir(os.path.join(dir_name, 'emg_output'))
 emg_env = np.load('flat_emg_env_data.npy')
 # sig_trials = np.load('sig_trials.npy')
 
-# cd to emg_BSA_results
-os.chdir('emg_BSA_results')
-
 task = int(sys.argv[1])
-
-# taste = int((task-1)/sig_trials.shape[-1])
-# trial = int((task-1)%sig_trials.shape[-1])
 
 # print(f'Processing taste {taste}, trial {trial}')
 print(f'Processing Trial {task}')
-
-# Make the time array and assign it to t on R
-T = (np.arange(7000) + 1)/1000.0
 
 # Run BSA on trial 'trial' of taste 'taste' and assign the results to p and omega.
 # input_data = emg_env[taste, trial, :]
@@ -147,27 +137,11 @@ input_data = emg_env[task]
 # Check that trial is non-zero, if it isn't, don't try to run BSA
 if not any(np.isnan(input_data)):
 
-    # Br = ro.r.matrix(input_data, nrow = 1, ncol = 7000)
-    # ro.r.assign('B', Br)
-    # ro.r('x = c(B[1,])')
-
-    # # x is the data, 
-    # # we scan periods from 0.1s (10 Hz) to 1s (1 Hz) in 20 steps. 
-    # # Window size is 300ms. 
-    # # There are no background functions (=0)
-    # ro.r('r_local = BaSAR.local(x, 0.1, 1, 20, t, 0, 300)') 
-    # p_r = r['r_local']
-    # # r_local is returned as a length 2 object, 
-    # # with the first element being omega and the second being the 
-    # # posterior probabilities. These need to be recast as floats
-    # p = np.array(p_r[1]).astype('float')
-    # omega = np.array(p_r[0]).astype('float')/(2.0*np.pi) 
-    omega, t_vec, p = calc_stft_mode_freq(input_data, **stft_params, BSA_output = True)
+    omega, t_vec, p = calc_stft_mode_freq(
+            input_data, **stft_params, BSA_output = True)
     p = p.T
-    # print(f'Taste {taste}, trial {trial} succesfully processed')
     print(f'Trial {task:03} succesfully processed')
 else:
-    # print(f'NANs in taste {taste}, trial {trial}, BSA will also output NANs')
     print(f'NANs in trial {task:03}, BSA will also output NANs')
     p = np.zeros((7000,20))
     omega = np.zeros(20)
@@ -175,7 +149,5 @@ else:
     omega = np.nan
 
 # Save p and omega by taste and trial number
-# np.save(f'taste{taste:02}_trial{trial:02}_p.npy', p)
-# np.save(f'taste{taste:02}_trial{trial:02}_omega.npy', omega)
-np.save(f'trial{task:03}_p.npy', p)
-np.save(f'trial{task:03}_omega.npy', omega)
+np.save(os.path.join('emg_BSA_results',f'trial{task:03}_p.npy'), p)
+np.save(os.path.join('emg_BSA_results',f'trial{task:03}_omega.npy'), omega)

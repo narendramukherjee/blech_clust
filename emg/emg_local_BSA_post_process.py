@@ -18,9 +18,10 @@ sys.path.append('..')
 from utils.blech_utils import imp_metadata
 
 # Get name of directory with the data files
-metadata_handler = imp_metadata(sys.argv)
+# metadata_handler = imp_metadata(sys.argv)
+dir_name = '/media/fastdata/KM45/KM45_5tastes_210620_113227_new/'
 # dir_name = '/media/bigdata/NM43_2500ms_160515_104159_copy' 
-# metadata_handler = imp_metadata([[],dir_name])
+metadata_handler = imp_metadata([[],dir_name])
 dir_name = metadata_handler.dir_name
 os.chdir(dir_name)
 print(f'Processing : {dir_name}')
@@ -41,7 +42,7 @@ taste_names = info_dict['taste_params']['tastes']
 
 # Use trial count from emg_data to account for chopping down of trials
 # emg_data = np.load(os.path.join('emg_output','emg_data.npy'))
-emg_data = np.load(os.path.join('emg_output','flat_emg_env_data.npy'))
+# emg_data = np.load(os.path.join('emg_output','flat_emg_env_data.npy'))
 # trials = [emg_data.shape[2]]*emg_data.shape[1]
 emg_trials_frame = pd.read_csv('emg_output/emg_env_df.csv', index_col = 0)
 
@@ -69,10 +70,6 @@ for this_iter in zip(*p_inds):
 np.save(os.path.join('emg_output', 'p_flat.npy'), p_flat)
 np.save(os.path.join('emg_output', 'omega.npy'), omega)
 
-# plt.pcolormesh(np.arange(p_data.shape[1]), omega, p_data[100].T)
-# plt.plot(p_flat[100], color = 'r', linewidth = 2, linestyle = '--')
-# plt.show()
-
 merge_frame = pd.merge(emg_trials_frame, trial_info_frame, 
                        left_on = ['dig_in', 'trial_inds'], 
                        right_on = ['dig_in_name_taste', 'taste_rel_trial_num'], 
@@ -86,6 +83,40 @@ merge_frame.drop(
 
 # Write out merge frame
 merge_frame.to_csv('emg_output/emg_env_merge_df.csv')
+
+############################################################
+# ## Create gape and ltp arrays
+############################################################
+gape_array = np.logical_and(
+        p_flat >= 3,
+        p_flat <= 5
+        )
+ltp_flat = p_flat >= 5.5
+
+# Write out
+np.save('emg_output/gape_array.npy', gape_array)
+np.save('emg_output/ltp_flat.npy', ltp_flat)
+
+
+comp_dir = '/media/fastdata/KM45/KM45_5tastes_210620_113227_old/emg_output/emg/emg_BSA_results/'
+comp_name = 'taste00_trial00'
+comp_p_name = comp_name + '_p.npy'
+comp_p_path = os.path.join(comp_dir, comp_p_name)
+comp_p = np.load(comp_p_path)
+
+# ind = 0
+# fig, ax = plt.subplots(2,1, sharex = True)
+# ax[0].pcolormesh(np.arange(p_data.shape[1]), omega, p_data[ind].T)
+# ax[0].plot(p_flat[ind], color = 'r', linewidth = 2, linestyle = '--')
+# ax[0].axhline(3, color = 'yellow', linestyle = '--')
+# ax[0].axhline(5, color = 'yellow', linestyle = '--')
+# ax[1].plot(gape_array[ind], color = 'b', label = 'Gape')
+# ax[1].plot(ltp_flat[ind], color = 'r', label = 'LTP')
+# ax[1].legend()
+# 
+# # plt.show()
+# plt.imshow(comp_p.T, aspect = 'auto')
+# plt.show()
 
 
 # ############################################################

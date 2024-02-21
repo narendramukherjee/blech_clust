@@ -9,9 +9,12 @@ import pylab as plt
 import sys
 import glob
 import json
+import tables
+import pandas as pd
 
 # Ask for the directory where the data (emg_data.npy) sits
 # Get name of directory with the data files
+
 if len(sys.argv) > 1:
     dir_name = os.path.abspath(sys.argv[1])
     if dir_name[-1] != '/':
@@ -20,6 +23,7 @@ else:
     dir_name = easygui.diropenbox(msg = 'Please select data directory')
 os.chdir(dir_name)
 
+h5_path = glob.glob(os.path.join(dir_name, '*.h5'))[0]
 ############################################################
 ## Load params
 ############################################################
@@ -31,9 +35,8 @@ with open(json_path, 'r') as params_file:
 tastes = info_dict['taste_params']['tastes']
 print(f'Tastes : {tastes}'+'\n')
 
-#tastes = easygui.multenterbox(
-#        msg = 'Enter the names of the tastes used in the experiments', 
-#        fields = ['Taste{:d}'.format(i+1) for i in range(emg_env.shape[0])])
+emg_output_dir = os.path.join(dir_name, 'emg_output')
+plot_dir = os.path.join(emg_output_dir, 'plots')
 
 # Pull pre_stim duration from params file
 params_file_name = glob.glob('./**.params')[0]
@@ -47,68 +50,116 @@ fin_inds = [pre_stim - plot_params[0], pre_stim + plot_params[1]]
 time_vec = np.arange(-plot_params[0], plot_params[1])
 print(f'Plotting from {-plot_params[0]}ms pre_stim to {plot_params[1]}ms post_stim\n')
 
-#time_limits = easygui.multenterbox(
-#        msg = 'Time limits for plotting [relative to stim delivery]', 
-#        fields = ['Stim Delivery (ms)', 'Pre stim (ms)', 'Post stim (ms)'])
-#time_limits = [int(x) for x in time_limits]
-#fin_time_limits = time_limits[1:]
-#fin_inds = [x + time_limits[0] for x in time_limits[1:]]
-#time_vec = np.arange(*fin_time_limits)
-
 ############################################################
 ## Load data and generate plots 
 ############################################################
-emg_output_dir = os.path.join(dir_name, 'emg_output')
-channel_dirs = glob.glob(os.path.join(emg_output_dir,'emg*'))
-channel_dirs = [x for x in channel_dirs if os.path.isdir(x)]
-channels_discovered = [os.path.basename(x) for x in channel_dirs]
-print(f'Creating plots for : {channels_discovered}\n')
+hf5 = tables.open_file(h5_path, 'r')
+# Get all emg_env data
+# Structure /emg_data/dig_in_<xx>/processed_emg/<xx>_emg_env
+dig_in_nodes = hf5.list_nodes('/emg_data')
+dig_in_nodes = [x for x in dig_in_nodes if 'dig_in' in x._v_name]
+emg_env_node_names = []
+emg_env_data = []
+emg_filt_data = []
+for node in dig_in_nodes:
+    node_list = hf5.list_nodes(
+            os.path.join(node._v_pathname, 'processed_emg'),
+                               classname='Array')
+    node_list = [x for x in node_list if 'emg_env' in x._v_name]
+    dat_list = [x.read() for x in node_list]
+    emg_env_data.extend(dat_list)
+    emg_env_node_names.extend([x._v_pathname for x in node_list])
 
-for this_dir in channel_dirs:
-    os.chdir(this_dir)
-    #emg_data = np.load('emg_data.npy')
-    emg_filt = np.load('emg_filt.npy')
-    emg_env = np.load('emg_env.npy')
-    sig_trials = np.load('sig_trials.npy')
+    node_list = hf5.list_nodes(
+            os.path.join(node._v_pathname, 'processed_emg'),
+                                classname='Array')
+    node_list = [x for x in node_list if 'emg_filt' in x._v_name]
+    dat_list = [x.read() for x in node_list]
+    emg_filt_data.extend(dat_list)
+hf5.close()
+dig_in_list = [x.split('/')[2] for x in emg_env_node_names]
+car_list = [x.split('_')[-3].split('/')[1] for x in emg_env_node_names]
+
+cut_emg_env = [x[...,fin_inds[0]:fin_inds[1]] for x in emg_env_data]
+cut_emg_filt = [x[...,fin_inds[0]:fin_inds[1]] for x in emg_filt_data]
 
 
-    colors = ['r','b']
+df = pd.DataFrame(
+        {
+            'dig_in': dig_in_list, 
+            'car': car_list, 
+            'emg_env': cut_emg_env, 
+            'emg_filt': cut_emg_filt
+            }
+        )
 
-    cut_emg_filt = emg_filt[...,fin_inds[0]:fin_inds[1]]
-    cut_emg_env = emg_env[...,fin_inds[0]:fin_inds[1]]
+car_group = list(df.groupby('car'))
 
-    fig,ax = plt.subplots(*emg_filt.shape[:2][::-1], 
-            sharey=True, sharex=True, figsize = (20,30))
-    inds = list(np.ndindex(ax.shape))
-    for trial, taste in inds:
-        this_color = colors[int(sig_trials[taste,trial])]
-        ax[trial,taste].plot(time_vec, cut_emg_filt[taste,trial], 
-                c = this_color)
-        if trial == 0:
-            this_taste = tastes[taste]
-            ax[trial,taste].set_title(this_taste)
-        if trial == emg_filt.shape[1]-1:
-            ax[trial,taste].set_xlabel('Time post-sitm (ms)')
-    plt.suptitle('Red --> Not significant, Blue --> Significant')
-    plt.subplots_adjust(top = 0.95)
-    fig.savefig('emg_filtered_plots.png', bbox_inches = 'tight')
-    plt.close(fig)
-    #plt.show()
+max_trials = max([x.shape[0] for x in cut_emg_env])
+for car_name, car_data in car_group:
+    n_digs = car_data.dig_in.nunique()
+    fig, ax = plt.subplots(max_trials, n_digs, 
+                           sharex = True, sharey = True,
+                           figsize = (n_digs*4, max_trials)
+                           )
+    for i, (dig_name, dig_data) in enumerate(car_data.groupby('dig_in')):
+        ax[0, i].set_title(dig_name)
+        dig_filt = dig_data.emg_filt.values[0]
+        for j, trial in enumerate(dig_filt):
+            ax[j, i].plot(time_vec, trial)
+            ax[j, i].axvline(0, color = 'r', linestyle = '--')
+    fig.suptitle(f'{car_name} EMG Filt')
+    # fig.tight_layout()
+    fig.subplots_adjust(top=0.9)
+    # plt.show()
+    plt.savefig(os.path.join(plot_dir, f'{car_name}_emg_filt.png'))
+    plt.close()
 
-    fig,ax = plt.subplots(*emg_filt.shape[:2][::-1], 
-            sharey=True, sharex=True, figsize = (20,30))
-    inds = list(np.ndindex(ax.shape))
-    for trial, taste in inds:
-        this_color = colors[int(sig_trials[taste,trial])]
-        ax[trial,taste].plot(time_vec, cut_emg_env[taste,trial], 
-                c = this_color)
-        if trial == 0:
-            this_taste = tastes[taste]
-            ax[trial,taste].set_title(this_taste)
-        if trial == emg_filt.shape[1]-1:
-            ax[trial,taste].set_xlabel('Time post-sitm (ms)')
-    plt.suptitle('Red --> Not significant, Blue --> Significant')
-    plt.subplots_adjust(top = 0.95)
-    fig.savefig('emg_envelope_plots.png', bbox_inches = 'tight')
-    plt.close(fig)
-    plt.show()
+    fig, ax = plt.subplots(max_trials, n_digs, 
+                           sharex = True, sharey = True,
+                           figsize = (n_digs*4, max_trials)
+                           )
+    for i, (dig_name, dig_data) in enumerate(car_data.groupby('dig_in')):
+        ax[0, i].set_title(dig_name)
+        dig_filt = dig_data.emg_env.values[0]
+        for j, trial in enumerate(dig_filt):
+            ax[j, i].plot(time_vec, trial)
+            ax[j, i].axvline(0, color = 'r', linestyle = '--')
+    fig.suptitle(f'{car_name} EMG Env')
+    # fig.tight_layout()
+    fig.subplots_adjust(top=0.9)
+    # plt.show()
+    plt.savefig(os.path.join(plot_dir, f'{car_name}_emg_env.png'))
+    plt.close()
+
+############################################################
+# Plot env using flat_emg_env and emg_env_merge_df
+
+# emg_env_merge_df = pd.read_csv(
+#         os.path.join(emg_output_dir, 'emg_env_merge_df.csv'),
+#         index_col = 0)
+# flat_emg_env = np.load(os.path.join(emg_output_dir, 'flat_emg_env_data.npy'))
+# 
+# car_group = list(emg_env_merge_df.groupby('car'))
+# 
+# max_trials = emg_env_merge_df.taste_rel_trial_num.max() + 1 
+# 
+# for car_name, car_data in car_group:
+#     n_digs = car_data.dig_in_num_taste.nunique()
+#     fig, ax = plt.subplots(max_trials, n_digs, 
+#                            sharex = True, sharey = True,
+#                            figsize = (n_digs*4, max_trials)
+#                            )
+#     for i, (dig_name, dig_data) in enumerate(car_data.groupby('dig_in_name_taste')):
+#         ax[0, i].set_title(dig_name)
+#         dat_inds = dig_data.index.values
+#         dig_filt = flat_emg_env[dat_inds][:, fin_inds[0]:fin_inds[1]] 
+#         for j, trial in enumerate(dig_filt):
+#             ax[j, i].plot(time_vec, trial)
+#             ax[j, i].axvline(0, color = 'r', linestyle = '--')
+#     fig.suptitle(f'{car_name} EMG Filt')
+#     # fig.tight_layout()
+#     fig.subplots_adjust(top=0.9)
+#     # plt.show()
+#     plt.savefig(os.path.join(plot_dir, f'{car_name}_emg_env_df.png'))
+#     plt.close()

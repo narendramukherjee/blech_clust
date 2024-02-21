@@ -98,6 +98,9 @@ if __name__ == '__main__':
 
     # Ask for the directory where the hdf5 file sits, and change to that directory
     # Get name of directory with the data files
+    dir_name = '/media/fastdata/KM45/KM45_5tastes_210620_113227_new'
+    sys.argv = [sys.argv[0], dir_name]
+
     metadata_handler = imp_metadata(sys.argv)
     os.chdir(metadata_handler.dir_name)
     print(f'Processing: {metadata_handler.dir_name}')
@@ -190,20 +193,36 @@ if __name__ == '__main__':
                     )
                 )
         laser_info_list.append(this_frame)
-    laser_info_frame = pd.concat(laser_info_list)
 
-    # Match laser starts to taste starts within tolerance
-    match_tol = sampling_rate/10 #100 ms
-    laser_starts = laser_info_frame['start'].values
-    match_trials_ind = []
-    for this_start in laser_starts:
-        match_ind = np.where(
-                np.abs(taste_info_frame['start'] - this_start) < match_tol
-                )[0]
-        assert len(match_ind) == 1, 'Exact match not found'
-        match_trials_ind.append(match_ind[0])
-    match_trials = taste_info_frame.iloc[match_trials_ind]['abs_trial_num'].values
-    laser_info_frame['abs_trial_num'] = match_trials
+    if len(laser_info_list) > 0:
+        laser_info_frame = pd.concat(laser_info_list)
+
+        # Match laser starts to taste starts within tolerance
+        match_tol = sampling_rate/10 #100 ms
+        laser_starts = laser_info_frame['start'].values
+        match_trials_ind = []
+        for this_start in laser_starts:
+            match_ind = np.where(
+                    np.abs(taste_info_frame['start'] - this_start) < match_tol
+                    )[0]
+            assert len(match_ind) == 1, 'Exact match not found'
+            match_trials_ind.append(match_ind[0])
+        match_trials = taste_info_frame.iloc[match_trials_ind]['abs_trial_num'].values
+        laser_info_frame['abs_trial_num'] = match_trials
+
+    else:
+        
+        # Dummy (place-holder) data
+        laser_info_frame= pd.DataFrame(
+                dict(
+                    dig_in_num = np.nan,
+                    dig_in_name = np.nan, 
+                    laser = False,
+                    start = np.nan, 
+                    end = np.nan,
+                    abs_trial_num = taste_info_frame['abs_trial_num'].values,
+                    ),
+                )
 
     # Merge taste and laser info frames
     trial_info_frame = taste_info_frame.merge(
@@ -247,7 +266,7 @@ if __name__ == '__main__':
         nonzero_inds = trial_info_frame['laser_duration_ms'] > 0
         trial_info_frame.loc[nonzero_inds,'laser_lag_ms'] = laser_onset
         trial_info_frame.loc[nonzero_inds,'laser_duration_ms'] = laser_duration
-        
+
     ###############
 
     ##############################
@@ -348,6 +367,7 @@ if __name__ == '__main__':
                 )
     cutoff_frame = trial_info_frame.loc[cutoff_bool,:]
     cutoff_frame = cutoff_frame[['dig_in_name_taste', 'start_taste', 'end_taste']]
+
     if len(cutoff_frame) > 0:
         print('=== Cutoff frame ===')
         print(cutoff_frame)

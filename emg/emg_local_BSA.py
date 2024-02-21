@@ -66,6 +66,8 @@ for node in dig_in_nodes:
     emg_env_data.extend(dat_list)
     emg_env_node_names.extend([x._v_pathname for x in node_list])
 
+hf5.close()
+
 # Save everything as pandas dataframe
 dig_in_list = [x.split('/')[2] for x in emg_env_node_names]
 car_list = [x.split('_')[-3].split('/')[1] for x in emg_env_node_names]
@@ -139,7 +141,7 @@ num_cpu = multiprocessing.cpu_count()
 f = open(os.path.join(blech_emg_dir,'blech_emg_jetstream_parallel.sh'), 'w')
 format_args = (
         int(num_cpu)-1, 
-        dir_name, 
+        data_dir, 
         len(emg_env_df)-1)
 print(
         "parallel -k -j {:d} --noswap --load 100% --progress --ungroup --joblog {:s}/results.log bash blech_emg_jetstream_parallel1.sh ::: {{0..{:d}}}".format(*format_args), 
@@ -161,5 +163,5 @@ f.close()
 # Finally dump a file with the data directory's location (blech.dir)
 # If there is more than one emg group, this will iterate over them
 f = open(os.path.join(blech_emg_dir,'BSA_run.dir'), 'w')
-print(dir_name, file = f)
+print(data_dir, file = f)
 f.close()
