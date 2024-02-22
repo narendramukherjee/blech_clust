@@ -91,14 +91,15 @@ for plot_name, plot_data in zip(['gapes', 'ltps'], [gapes, ltps]):
         n_tastes = this_car['taste'].nunique()
         n_lasers = this_car['laser'].nunique()
         fig, ax = plt.subplots(
-                n_lasers, n_tastes,
+                n_tastes, n_lasers,
                 sharex = True, sharey = True,
-                figsize = (4*n_tastes, 4*n_lasers))
+                figsize = (4*n_lasers, 4*n_tastes))
         if n_tastes == 1:
             ax = np.expand_dims(ax, axis = 0)
         if n_lasers == 1:
             ax = np.expand_dims(ax, axis = 1)
-        for this_ind, this_dat, this_ax in zip(taste_laser_inds, taste_laser_data, ax.flatten()):
+        for this_ind, this_dat, this_ax in \
+                zip(taste_laser_inds, taste_laser_data, ax.flatten()):
             this_data_inds = this_dat.index.values
             this_plot_data = plot_data[this_data_inds]
             this_ax.set_title(f"Taste: {this_ind[0]}, Laser: {this_ind[1]}")
@@ -122,53 +123,56 @@ for plot_name, plot_data in zip(['gapes', 'ltps'], [gapes, ltps]):
         plt.close(fig)
 
 # Plot taste overlay per laser condition and CAR
-g = sns.relplot(
-        data = mean_emg_long,
-        x = 'time',
-        y = 'emg_value',
-        hue = 'taste',
-        row = 'laser',
-        col = 'car',
-        style = 'emg_type',
-        kind = 'line',
-        linewidth = 5,
-        alpha = 0.7,
-        )
-g.fig.suptitle('Taste Overlay')
-# Plot dashed line as x=0
-for ax in g.axes.flatten():
-    ax.axvline(0, color = 'red', linestyle = '--', linewidth = 2, alpha = 0.7)
-plt.tight_layout()
-g.savefig(
-        os.path.join(
-            plot_dir,
-            'taste_overlay.png'),
-        bbox_inches = 'tight')
-plt.close(g.fig)
+for car_name, car_dat in list(mean_emg_long.groupby('car')):
+    g = sns.relplot(
+            data = mean_emg_long,
+            x = 'time',
+            y = 'emg_value',
+            hue = 'taste',
+            row = 'laser',
+            col = 'emg_type',
+            # style = 'emg_type',
+            kind = 'line',
+            linewidth = 2,
+            # alpha = 0.7,
+            )
+    g.fig.suptitle('Taste Overlay')
+    # Plot dashed line as x=0
+    for ax in g.axes.flatten():
+        ax.axvline(0, color = 'red', linestyle = '--', linewidth = 2, alpha = 0.7)
+    sns.move_legend(g, "upper left", bbox_to_anchor=(1, 1))
+    plt.tight_layout()
+    g.savefig(
+            os.path.join(
+                plot_dir,
+                f'{car_name}_taste_overlay.png'),
+            bbox_inches = 'tight')
+    plt.close(g.fig)
 
 
-# Plot laser overlay per taste and CAR
-g = sns.relplot(
-        data = mean_emg_long,
-        x = 'time',
-        y = 'emg_value',
-        hue = 'laser',
-        row = 'car',
-        col = 'taste',
-        style = 'emg_type',
-        kind = 'line',
-        linewidth = 5,
-        alpha = 0.7,
-        )
-g.fig.suptitle('Laser Overlay')
-# Plot dashed line as x=0
-for ax in g.axes.flatten():
-    ax.axvline(0, color = 'red', linestyle = '--', linewidth = 2, alpha = 0.7)
-plt.tight_layout()
-g.savefig(
-        os.path.join(
-            plot_dir,
-            'laser_overlay.png'),
-        bbox_inches = 'tight')
-plt.close(g.fig)
+    # Plot laser overlay per taste and CAR
+    g = sns.relplot(
+            data = mean_emg_long,
+            x = 'time',
+            y = 'emg_value',
+            hue = 'laser',
+            row = 'emg_type',
+            col = 'taste',
+            # style = 'emg_type',
+            kind = 'line',
+            linewidth = 2,
+            # alpha = 0.7,
+            )
+    g.fig.suptitle('Laser Overlay')
+    # Plot dashed line as x=0
+    for ax in g.axes.flatten():
+        ax.axvline(0, color = 'red', linestyle = '--', linewidth = 2, alpha = 0.7)
+    sns.move_legend(g, "upper left", bbox_to_anchor=(1, 1))
+    plt.tight_layout()
+    g.savefig(
+            os.path.join(
+                plot_dir,
+                f'{car_name}_laser_overlay.png'),
+            bbox_inches = 'tight')
+    plt.close(g.fig)
 
