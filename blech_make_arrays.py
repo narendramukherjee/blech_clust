@@ -85,6 +85,7 @@ def create_emg_trials_for_digin(
 
         # And add emg_data to the hdf5 file
         hf5.create_group('/emg_data', dig_in_basename[i])
+        # Shape = (n_channels, n_trials, n_samples)
         hf5.create_array(
                 f'/emg_data/{dig_in_basename[i]}', 
                 'emg_array', np.array(emg_data))
