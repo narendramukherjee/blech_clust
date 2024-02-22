@@ -196,7 +196,7 @@ if __name__ == '__main__':
         laser_info_frame = pd.concat(laser_info_list)
 
         # Match laser starts to taste starts within tolerance
-        match_tol = sampling_rate/10 #100 ms
+        match_tol = (2*sampling_rate)/10 #200 ms
         laser_starts = laser_info_frame['start'].values
         match_trials_ind = []
         for this_start in laser_starts:
@@ -260,19 +260,20 @@ if __name__ == '__main__':
     trial_info_frame['laser_duration_ms'].fillna(0, inplace=True)
     trial_info_frame['laser_lag_ms'].fillna(0, inplace=True)
 
+    trial_info_frame['laser_duration_ms'] = \
+            trial_info_frame['laser_duration_ms'].astype(int)
+    trial_info_frame['laser_lag_ms'] = \
+            trial_info_frame['laser_lag_ms'].astype(int)
+
     if isinstance(laser_onset, int):
         nonzero_inds = trial_info_frame['laser_duration_ms'] > 0
         trial_info_frame.loc[nonzero_inds,'laser_lag_ms'] = laser_onset
         trial_info_frame.loc[nonzero_inds,'laser_duration_ms'] = laser_duration
 
-    ###############
-
     ##############################
     # Save trial info frame to hdf5 file and csv
 
-    hf5.close()
     trial_info_frame.to_hdf(metadata_handler.hdf5_name, 'trial_info_frame', mode='a')
-    hf5 = tables.open_file(metadata_handler.hdf5_name, 'r+')
     csv_path = os.path.join(metadata_handler.dir_name, 'trial_info_frame.csv')
     trial_info_frame.to_csv(csv_path, index=False)
 
@@ -406,6 +407,29 @@ if __name__ == '__main__':
                     units,
                     hf5,
                     )
+        ###############
+        # Write out laser_duration and lag to hdf5 file
+        if True in trial_info_frame['laser'] and '/spike_trains' in hf5:
+            trial_info_group = \
+                    [x[1] for x in trial_info_frame.groupby('dig_in_num_taste')]
+            for this_group in trial_info_group:
+                this_group = this_group.sort_values('taste_rel_trial_num')
+                laser_durations = this_group['laser_duration_ms'].values
+                laser_lags = this_group['laser_lag_ms'].values
+                this_dig_in_name = this_group['dig_in_name_taste'].values[0]
+                dig_in_path = f'/spike_trains/{this_dig_in_name}'
+                if f'{dig_in_path}/laser_durations' in hf5:
+                        hf5.remove_node(dig_in_path, 'laser_durations')
+                if f'{dig_in_path}/laser_onset_lag' in hf5:
+                    hf5.remove_node(dig_in_path, 'laser_onset_lag')
+                hf5.create_array(
+                        dig_in_path,
+                        'laser_durations', laser_durations)
+                hf5.create_array(
+                        dig_in_path,
+                        'laser_onset_lag', laser_lags)
+                hf5.flush() 
+
     else:
         print('No sorted units found...NOT MAKING SPIKE TRAINS')
 
