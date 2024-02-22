@@ -61,9 +61,7 @@ pip install -r neuRecommend/requirements.txt
 - blech_clust_post.sh : Runs steps 7-14   
 
 ### Operations Workflow Visual 
-![blech_clust_readme](https://github.com/abuzarmahmood/blech_clust/assets/12436309/7ff483da-7aa6-4f96-af64-3fbe3205c6ef)
-
-
+![nomnoml](https://github.com/abuzarmahmood/blech_clust/assets/12436309/21ee25b5-d7f5-4634-bc2d-4077af66b920)
 
 ### Example workflow
 ```
@@ -81,28 +79,28 @@ https://drive.google.com/drive/folders/1ne5SNU3Vxf74tbbWvOYbYOE1mSBkJ3u3?usp=sha
 
 ### Dependency Graph (for use with https://www.nomnoml.com/)
 
-- Spike Sorting
-[blech_exp_info] -> [blech_clust]
-[blech_clust] -> [blech_common_average_reference]
-[blech_common_average_reference] -> [bash blech_run_process.sh]
-[bash blech_run_process.sh] -> [blech_post_process]
-[blech_post_process] -> [bash blech_run_QA.sh]
-[bash blech_run_QA.sh] -> [blech_units_plot]
-[blech_units_plot] -> [blech_make_arrays]
-[blech_make_arrays] -> [blech_make_psth]
-[blech_make_psth] -> [blech_palatability_identity_setup]
-[blech_palatability_identity_setup] -> [blech_overlay_psth]
+- **Spike Sorting**
+- - [blech_exp_info] -> [blech_clust]
+- - [blech_clust] -> [blech_common_average_reference]
+- - [blech_common_average_reference] -> [bash blech_run_process.sh]
+- - [bash blech_run_process.sh] -> [blech_post_process]
+- - [blech_post_process] -> [bash blech_run_QA.sh]
+- - [bash blech_run_QA.sh] -> [blech_units_plot]
+- - [blech_units_plot] -> [blech_make_arrays]
+- - [blech_make_arrays] -> [blech_make_psth]
+- - [blech_make_psth] -> [blech_palatability_identity_setup]
+- - [blech_palatability_identity_setup] -> [blech_overlay_psth]
 
-- EMG shared
-[blech_clust] -> [blech_make_arrays]
-[blech_make_arrays] -> [emg_filter]
+- **EMG shared**
+- - [blech_clust] -> [blech_make_arrays]
+- - [blech_make_arrays] -> [emg_filter]
 
-- BSA/STFT
-[emg_filter] -> [emg_freq_setup]
-[emg_freq_setup] -> [bash blech_emg_jetstream_parallel.sh]
-[bash blech_emg_jetstream_parallel.sh] -> [emg_freq_post_process]
-[emg_freq_post_process] -> [emg_freq_plot]
+- **BSA/STFT**
+- - [emg_filter] -> [emg_freq_setup]
+- - [emg_freq_setup] -> [bash blech_emg_jetstream_parallel.sh]
+- - [bash blech_emg_jetstream_parallel.sh] -> [emg_freq_post_process]
+- - [emg_freq_post_process] -> [emg_freq_plot]
 
-- QDA (Jenn Li)
-[emg_filter] -> [get_gapes_Li]
-[get_gapes_Li] -> [gape_classifier_plot]
+- **QDA (Jenn Li)**
+- - [emg_filter] -> [get_gapes_Li]
+- - [get_gapes_Li] -> [gape_classifier_plot]
