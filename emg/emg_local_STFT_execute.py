@@ -10,7 +10,7 @@ import easygui
 import os
 import sys
 import datetime
-import scipy
+from scipy import signal
 import json
 
 class Logger(object):
@@ -44,8 +44,8 @@ def calc_stft(trial, max_freq,time_range_tuple,\
     time_range_tuple : (start,end) in seconds, time_lims of spectrogram
                             from start of trial snippet`
     """
-    f,t,this_stft = scipy.signal.stft(
-                scipy.signal.detrend(trial),
+    f,t,this_stft = signal.stft(
+                signal.detrend(trial),
                 fs=Fs,
                 # window='hann', # don't specify window to avoid version issues
                 nperseg=signal_window,

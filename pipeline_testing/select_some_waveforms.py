@@ -36,7 +36,7 @@ os.chdir(dir_name)
 
 # Load clustering results
 clustering_path = os.path.join(dir_name, 'clustering_results')
-pred_files = sorted(glob.glob(os.path.join(clustering_path,'*','*','*.npy')))
+pred_files = sorted(glob.glob(os.path.join(clustering_path,'*','*','predictions.npy')))
 # Only take 1 cluster per electrode with count > threshold
 # Because we don't want the script to confirm with user
 

@@ -92,8 +92,11 @@ if not '/sorted_units' in hf5:
 # Run an infinite loop as long as the user wants to 
 # pick clusters from the electrodes   
 
+# Providing a sort file will force use of the sort file and 
+# skip auto_post_process
+
 # This section will run if not auto_post_process
-while not auto_post_process:
+while (not auto_post_process) or (args.sort_file is not None):
 
     ############################################################
     # Get unit details and load data
@@ -330,7 +333,7 @@ while not auto_post_process:
 # Run auto-processing only if clustering was ALSO automatic
 # As currently, this does not have functionality to determine
 # correct number of clusters
-if auto_post_process and auto_cluster:
+if auto_post_process and auto_cluster and (args.sort_file is None):
     print('==== Auto Post-Processing ====\n')
 
     autosort_output_dir = os.path.join(
@@ -537,9 +540,6 @@ if auto_post_process and auto_cluster:
                         )
             else:
                 continue_bool = True
-
-        if continue_bool and (this_sort_file_handler.sort_table is not None):
-            this_sort_file_handler.mark_current_unit_saved()
 
         hf5.flush()
 
