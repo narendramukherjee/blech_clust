@@ -141,8 +141,8 @@ for i, this_row in ind_frame.iterrows():
     ## Get mean and std of baseline emg activity, 
     ## and use it to select trials that have significant post stimulus activity
     # sig_trials (assumed shape) : tastes x trials
-    pre_m = np.mean(np.abs(this_dat[pre_stim]))
-    pre_s = np.std(np.abs(this_dat[pre_stim]))
+    pre_m = np.mean(np.abs(this_dat[:pre_stim]))
+    pre_s = np.std(np.abs(this_dat[:pre_stim]))
 
     post_m = np.mean(np.abs(this_dat[pre_stim:]))
     post_max = np.max(np.abs(this_dat[pre_stim:]))
