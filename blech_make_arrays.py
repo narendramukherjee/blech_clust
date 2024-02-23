@@ -21,16 +21,14 @@ def get_dig_in_data(hf5):
     return dig_in_pathname, dig_in_basename, dig_in_data
 
 def create_spike_trains_for_digin(
-        taste_starts_cutoff,
-        dig_in_ind,
-        this_dig_in,
+        this_starts,
         durations,
         sampling_rate_ms,
         units,
         hf5,
         ):
         spike_train = []
-        for this_start in this_dig_in: 
+        for this_start in this_starts: 
             spikes = np.zeros((len(units), durations[0] + durations[1]))
             for k in range(len(units)):
                 # Get the spike times around the end of taste delivery
@@ -61,78 +59,37 @@ def create_spike_trains_for_digin(
                 'spike_array', np.array(spike_train))
         hf5.flush()
 
-def create_laser_params_for_digin(
-        i,
-        this_dig_in,
-        start_points_cutoff,
-        end_points_cutoff,
-        sampling_rate,
+def create_emg_trials_for_digin(
+        this_starts,
+        durations,
         sampling_rate_ms,
-        laser_digin_inds,
-        dig_in_basename,
+        emg_nodes,
         hf5,
         ):
+        emg_data = [[this_emg[this_start - durations[0]*sampling_rate_ms:\
+                        this_start + durations[1]*sampling_rate_ms] \
+                        for this_start in this_starts]
+                        for this_emg in emg_nodes]
+        emg_data = np.stack(emg_data)*0.195
 
-    # Even if laser is not present, create arrays for laser parameters
-    laser_duration = np.zeros(len(this_dig_in))
-    laser_start = np.zeros(len(this_dig_in))
+        emg_data =  np.mean(
+                emg_data.reshape((*emg_data.shape[:2],-1, int(sampling_rate_ms))), 
+                    axis = -1)
 
-    if len(laser_digin_inds):
-        selected_laser_digin = laser_digin_inds[0]
-        print(f'Processing: laser from {dig_in_basename[selected_laser_digin]}')
+        # Write out ind:name map for each node
+        ind_name_map = {i:node._v_name for i,node in enumerate(emg_nodes)}
+        str_dict = str(ind_name_map)
+        if '/emg_data/ind_electrode_map' in hf5:
+            hf5.remove_node('/emg_data','ind_electrode_map')
+        hf5.create_array('/emg_data', 'ind_electrode_map', np.array(str_dict))
 
-        # Else run through the lasers and check if the lasers 
-        # went off within 5 secs of the stimulus delivery time
-        time_diff = \
-                this_dig_in[:,np.newaxis] - \
-                start_points_cutoff[selected_laser_digin][:,np.newaxis].T
-        time_diff = np.abs(time_diff)
-        laser_trial_bool = time_diff <= 5*sampling_rate
-        which_taste_trial = np.sum(laser_trial_bool, axis = 1) > 0
-        which_laser_trial = np.sum(laser_trial_bool, axis = 0) > 0
-
-        all_laser_durations = \
-                end_points_cutoff[selected_laser_digin] - \
-                start_points_cutoff[selected_laser_digin]
-        wanted_laser_durations = all_laser_durations[which_laser_trial]
-        wanted_laser_starts = \
-                start_points_cutoff[selected_laser_digin][which_laser_trial] - \
-                this_dig_in[which_taste_trial]
-        # If the lasers did go off around stimulus delivery, 
-        # get the duration and start time in ms 
-        # (from end of taste delivery) of the laser trial 
-        # (as a multiple of 10 - so 53 gets rounded off to 50)
-        vector_int = np.vectorize(np.int32)
-        wanted_laser_durations = \
-                10*vector_int(wanted_laser_durations/(sampling_rate_ms*10))
-        wanted_laser_starts = \
-                10*vector_int(wanted_laser_starts/(sampling_rate_ms*10))
-
-        laser_duration[which_taste_trial] = wanted_laser_durations
-        laser_start[which_taste_trial] = wanted_laser_starts
-
-    else:
-        print('No lasers specified')
-
-    if '/spike_trains' not in hf5:
-        hf5.create_group('/', 'spike_trains')
-
-    dig_in_path = f'/spike_trains/{dig_in_basename[i]}'
-    if dig_in_path not in hf5:
-        hf5.create_group('/spike_trains', dig_in_basename[i])
-
-    # Write the conditional stimulus duration array to the hdf5 file
-    if f'{dig_in_path}/laser_durations' in hf5:
-        hf5.remove_node(dig_in_path, 'laser_durations')
-    if f'{dig_in_path}/laser_onset_lag' in hf5:
-        hf5.remove_node(dig_in_path, 'laser_onset_lag')
-    laser_durations = hf5.create_array(
-            dig_in_path,
-            'laser_durations', laser_duration)
-    laser_onset_lag = hf5.create_array(
-            dig_in_path,
-            'laser_onset_lag', laser_start)
-    hf5.flush() 
+        # And add emg_data to the hdf5 file
+        hf5.create_group('/emg_data', dig_in_basename[i])
+        # Shape = (n_channels, n_trials, n_samples)
+        hf5.create_array(
+                f'/emg_data/{dig_in_basename[i]}', 
+                'emg_array', np.array(emg_data))
+        hf5.flush()
 
 ############################################################
 ## Run Main
@@ -142,6 +99,7 @@ if __name__ == '__main__':
 
     # Ask for the directory where the hdf5 file sits, and change to that directory
     # Get name of directory with the data files
+
     metadata_handler = imp_metadata(sys.argv)
     os.chdir(metadata_handler.dir_name)
     print(f'Processing: {metadata_handler.dir_name}')
@@ -182,6 +140,143 @@ if __name__ == '__main__':
     print(f'Taste dig_ins ::: \n{taste_str}\n')
     print(f'Laser dig_in ::: \n{laser_str}\n')
 
+    ##############################  
+    # Create trial info frame with following information
+    # 1. Trial # (from 1 to n)
+    # 2. Trial # (per taste)
+    # 3. Taste dig-in
+    # 4. Taste name (from info file)
+    # 5. Laser dig-in
+    # 6. Laser duration and lag
+    # 7. Start and end times of taste delivery
+    # 8. Start and end times of laser delivery
+    # 9. Start and end times of taste delivery (in ms)
+    # 10. Start and end times of laser delivery (in ms)
+    # 11. Laser duration and lag (in ms)
+
+    taste_info_list = []
+    for ind, num in enumerate(taste_digin_inds):
+        this_frame = pd.DataFrame(
+                dict(
+                    dig_in_num = num,
+                    dig_in_name = dig_in_basename[num],
+                    taste = info_dict['taste_params']['tastes'][ind],
+                    start = start_points[num],
+                    end = end_points[num],
+                    )
+                )
+        taste_info_list.append(this_frame)
+    taste_info_frame = pd.concat(taste_info_list)
+    taste_info_frame.sort_values(by=['start'],inplace=True)
+    taste_info_frame.reset_index(drop=True,inplace=True)
+    taste_info_frame['abs_trial_num'] = taste_info_frame.index
+
+    # Add taste_rel_trial_num
+    taste_grouped = taste_info_frame.groupby('dig_in_num')
+    fin_group = []
+    for name, group in taste_grouped:
+        group['taste_rel_trial_num'] = np.arange(group.shape[0])
+        fin_group.append(group)
+    taste_info_frame = pd.concat(fin_group)
+    taste_info_frame.sort_values(by=['start'],inplace=True)
+
+    laser_info_list = []
+    for ind, num in enumerate(laser_digin_inds):
+        this_frame = pd.DataFrame(
+                dict(
+                    dig_in_num = num,
+                    dig_in_name = dig_in_basename[num],
+                    laser = True,
+                    start = start_points[num],
+                    end = end_points[num],
+                    )
+                )
+        laser_info_list.append(this_frame)
+
+    if len(laser_info_list) > 0:
+        laser_info_frame = pd.concat(laser_info_list)
+
+        # Match laser starts to taste starts within tolerance
+        match_tol = (2*sampling_rate)/10 #200 ms
+        laser_starts = laser_info_frame['start'].values
+        match_trials_ind = []
+        for this_start in laser_starts:
+            match_ind = np.where(
+                    np.abs(taste_info_frame['start'] - this_start) < match_tol
+                    )[0]
+            assert len(match_ind) == 1, 'Exact match not found'
+            match_trials_ind.append(match_ind[0])
+        match_trials = taste_info_frame.iloc[match_trials_ind]['abs_trial_num'].values
+        laser_info_frame['abs_trial_num'] = match_trials
+
+    else:
+        
+        # Dummy (place-holder) data
+        laser_info_frame= pd.DataFrame(
+                dict(
+                    dig_in_num = np.nan,
+                    dig_in_name = np.nan, 
+                    laser = False,
+                    start = np.nan, 
+                    end = np.nan,
+                    abs_trial_num = taste_info_frame['abs_trial_num'].values,
+                    ),
+                )
+
+    # Merge taste and laser info frames
+    trial_info_frame = taste_info_frame.merge(
+            laser_info_frame,
+            on='abs_trial_num',
+            how='left',
+            suffixes=('_taste','_laser')
+            )
+
+    # Calculate laser lag and duration
+    trial_info_frame['laser_duration'] = (
+            trial_info_frame['end_laser'] - trial_info_frame['start_laser']
+            )
+    trial_info_frame['laser_lag'] = (
+            trial_info_frame['start_taste'] - trial_info_frame['start_laser']
+            )
+
+    # Convert to sec
+    sec_cols = ['start_taste','end_taste','start_laser','end_laser',
+               'laser_duration','laser_lag']
+    for col in sec_cols:
+        new_col_name = col + '_ms'
+        trial_info_frame[new_col_name] = (trial_info_frame[col] / sampling_rate)*1000
+
+    ###############
+    # Correct laser timing using info_dict
+    # Assume only 1 laser condition!!
+
+    print('=====================')
+    print('Correcting laser timing using info_dict')
+    print('Assuming only 1 laser condition')
+    print('=====================')
+
+    laser_onset = info_dict['laser_params']['onset']
+    laser_duration = info_dict['laser_params']['duration']
+
+    trial_info_frame['laser_duration_ms'].fillna(0, inplace=True)
+    trial_info_frame['laser_lag_ms'].fillna(0, inplace=True)
+
+    trial_info_frame['laser_duration_ms'] = \
+            trial_info_frame['laser_duration_ms'].astype(int)
+    trial_info_frame['laser_lag_ms'] = \
+            trial_info_frame['laser_lag_ms'].astype(int)
+
+    if isinstance(laser_onset, int):
+        nonzero_inds = trial_info_frame['laser_duration_ms'] > 0
+        trial_info_frame.loc[nonzero_inds,'laser_lag_ms'] = laser_onset
+        trial_info_frame.loc[nonzero_inds,'laser_duration_ms'] = laser_duration
+
+    ##############################
+    # Save trial info frame to hdf5 file and csv
+
+    trial_info_frame.to_hdf(metadata_handler.hdf5_name, 'trial_info_frame', mode='a')
+    csv_path = os.path.join(metadata_handler.dir_name, 'trial_info_frame.csv')
+    trial_info_frame.to_csv(csv_path, index=False)
 
     # Get list of units under the sorted_units group. 
     # Find the latest/largest spike time amongst the units, 
@@ -192,26 +287,24 @@ if __name__ == '__main__':
     #============================================================#
     # NOTE: Calculate headstage falling off same way for all not "none" channels 
     # Pull out raw_electrode and raw_emg data
-    if '/raw' in hf5:
-        raw_electrodes = [x for x in hf5.get_node('/','raw')]
-    else:
-        raw_electrodes = []
+
+    # If sorting hasn't been done, use only emg channels
+    # to calculate cutoff...don't need to go through all channels
+
     if '/raw_emg' in hf5:
         raw_emg_electrodes = [x for x in hf5.get_node('/','raw_emg')]
     else:
         raw_emg_electrodes = []
 
-    all_electrodes = [raw_electrodes, raw_emg_electrodes] 
-    all_electrodes = [x for y in all_electrodes for x in y]
-    # If raw channel data is present, use that to calcualte cutoff
-    # This would explicitly be the case if only EMG was recorded
-    if len(all_electrodes) > 0:
-        all_electrode_names = [x._v_pathname for x in all_electrodes]
-        electrode_names = list(zip(*[x.split('/')[1:] for x in all_electrode_names]))
+    if len(raw_emg_electrodes) > 0:
+        emg_electrode_names = [x._v_pathname for x in raw_emg_electrodes]
+        electrode_names = list(zip(*[x.split('/')[1:] for x in emg_electrode_names]))
 
-        print('Calculating cutoff times')
+        print('Calculating cutoff times using following EMG electrodes...')
+        print(emg_electrode_names)
+        print('===============================================')
         cutoff_data = []
-        for this_el in tqdm(all_electrodes): 
+        for this_el in tqdm(raw_emg_electrodes): 
             raw_el = this_el[:]
             # High bandpass filter the raw electrode recordings
             filt_el = get_filtered_electrode(
@@ -250,8 +343,8 @@ if __name__ == '__main__':
                     'recording_cutoff'
                     ],
                 )
-        elec_cutoff_frame['electrode_type'] = all_electrode_names[0]
-        elec_cutoff_frame['electrode_name'] = all_electrode_names[1]
+        elec_cutoff_frame['electrode_type'] = electrode_names[0]
+        elec_cutoff_frame['electrode_name'] = electrode_names[1]
 
         # Write out to HDF5
         hf5.close()
@@ -266,32 +359,29 @@ if __name__ == '__main__':
         # Else use spiketimes
         units = hf5.get_node('/','sorted_units')
         expt_end_time = np.max([x.times[-1] for x in units]) 
+
+    # Check if any trials were cutoff
+    cutoff_bool = np.logical_and(
+                trial_info_frame.start_taste > expt_end_time,
+                trial_info_frame.end_taste > expt_end_time
+                )
+    cutoff_frame = trial_info_frame.loc[cutoff_bool,:]
+    cutoff_frame = cutoff_frame[['dig_in_name_taste', 'start_taste', 'end_taste']]
+
+    if len(cutoff_frame) > 0:
+        print('=== Cutoff frame ===')
+        print(cutoff_frame)
+    else:
+        print('=== No trials were cutoff ===')
+
     #============================================================#
 
     ############################################################ 
     ## Processing
     ############################################################ 
-    #TODO: Creating spike-trians + laser arrays can CERTAINLY be made cleaner
-    # Go through the taste_digin_inds and make an array of spike trains 
-    # of dimensions (# trials x # units x trial duration (ms)) - 
-    # use START of digital input pulse as the time of taste delivery
-    # Refer to https://github.com/narendramukherjee/blech_clust/pull/14
 
-    # Check start points prior to loop and print results
-    dig_in_trials = np.array([len(x) for x in start_points])
-    start_points_cutoff = [x[x<expt_end_time] for x in start_points]
-    end_points_cutoff = [x[x<expt_end_time] for x in end_points]
-    trials_before_cutoff = np.array([len(x) for x in start_points_cutoff])
-    cutoff_frame = pd.DataFrame(
-            data = dict(
-                dig_ins = dig_in_basename,
-                trials_before_cutoff = trials_before_cutoff,
-                trials_after_cutoff = dig_in_trials - trials_before_cutoff
-                )
-            )
-    print(cutoff_frame)
-
-    taste_starts_cutoff = [start_points_cutoff[i] for i in taste_digin_inds]
+    taste_starts_cutoff = trial_info_frame.loc[~cutoff_bool].\
+            groupby('dig_in_num_taste').start_taste.apply(np.array).tolist() 
 
     # Load durations from params file
     durations = params_dict['spike_array_durations']
@@ -309,34 +399,40 @@ if __name__ == '__main__':
         hf5.create_group('/', 'spike_trains')
 
         # Pull out spike trains
-        for i, this_dig_in in zip(taste_digin_inds, taste_starts_cutoff): 
+        for i, this_starts in zip(taste_digin_inds, taste_starts_cutoff): 
             print(f'Creating spike-trains for {dig_in_basename[i]}')
             create_spike_trains_for_digin(
-                    taste_starts_cutoff,
-                    i,
-                    this_dig_in,
+                    this_starts,
                     durations,
                     sampling_rate_ms,
                     units,
                     hf5,
                     )
+        ###############
+        # Write out laser_duration and lag to hdf5 file
+        if True in trial_info_frame['laser'] and '/spike_trains' in hf5:
+            trial_info_group = \
+                    [x[1] for x in trial_info_frame.groupby('dig_in_num_taste')]
+            for this_group in trial_info_group:
+                this_group = this_group.sort_values('taste_rel_trial_num')
+                laser_durations = this_group['laser_duration_ms'].values
+                laser_lags = this_group['laser_lag_ms'].values
+                this_dig_in_name = this_group['dig_in_name_taste'].values[0]
+                dig_in_path = f'/spike_trains/{this_dig_in_name}'
+                if f'{dig_in_path}/laser_durations' in hf5:
+                        hf5.remove_node(dig_in_path, 'laser_durations')
+                if f'{dig_in_path}/laser_onset_lag' in hf5:
+                    hf5.remove_node(dig_in_path, 'laser_onset_lag')
+                hf5.create_array(
+                        dig_in_path,
+                        'laser_durations', laser_durations)
+                hf5.create_array(
+                        dig_in_path,
+                        'laser_onset_lag', laser_lags)
+                hf5.flush() 
+
     else:
         print('No sorted units found...NOT MAKING SPIKE TRAINS')
-
-    # Separate out laser loop
-    for i, this_dig_in in zip(taste_digin_inds, taste_starts_cutoff): 
-        print(f'Creating laser info for {dig_in_basename[i]}')
-        create_laser_params_for_digin(
-                i,
-                this_dig_in,
-                start_points_cutoff,
-                end_points_cutoff,
-                sampling_rate,
-                sampling_rate_ms,
-                laser_digin_inds,
-                dig_in_basename,
-                hf5,
-                )
 
     if '/raw_emg' in hf5:
         if len(list(hf5.get_node('/','raw_emg'))) > 0:
@@ -349,64 +445,34 @@ if __name__ == '__main__':
             for node in emg_nodes:
                 emg_pathname.append(node._v_pathname)
 
-            # Create a numpy array to store emg data by trials
-            # Shape : Channels x Tastes x Trials x Time
-            # Use max number of trials to define array, this allows people with uneven
-            # numbers of trials to continue working
-            trial_counts = [len(x) for x in taste_starts_cutoff]
-            if len(np.unique(trial_counts)) > 1:
-                print(f'!! Uneven numbers of trials !! {trial_counts}')
-                print(f'Using {np.max(trial_counts)} as trial count')
-                print('== EMG ARRAY WILL HAVE EMPTY TRIALS ==')
+        # Delete /emg_data in hf5 file if it exists, and then create it
+        if '/emg_data' in hf5:
+            hf5.remove_node('/emg_data', recursive = True)
+        hf5.create_group('/', 'emg_data')
 
-            # Shape : channels x dig_ins x max_trials x duration 
-            emg_data = np.empty((
-                len(emg_pathname), 
-                len(taste_starts_cutoff), 
-                np.max(trial_counts), 
-                durations[0]+durations[1]))
+        # Pull out emg trials 
+        for i, this_starts in zip(taste_digin_inds, taste_starts_cutoff): 
+            print(f'Creating emg-trials for {dig_in_basename[i]}')
+            create_emg_trials_for_digin(
+                    this_starts,
+                    durations,
+                    sampling_rate_ms,
+                    emg_nodes,
+                    hf5,
+                    )
 
-            # All data that will not get filled should be nan
-            emg_data[:] = np.nan
+        # Save output in emg dir
+        if not os.path.exists('emg_output'):
+            os.makedirs('emg_output')
 
-            # And pull out emg data into this array
-            for i in range(len(emg_pathname)):
-                data = hf5.get_node(emg_pathname[i])[:]
-                for j, this_taste_digin in \
-                        zip(taste_digin_inds, taste_starts_cutoff):
-                    for k, this_start in enumerate(this_taste_digin):
-                        trial_bounds = [
-                                int(this_start - durations[0]*sampling_rate_ms),
-                                int(this_start + durations[1]*sampling_rate_ms)
-                                ]
-                        raw_emg_data = data[trial_bounds[0]:trial_bounds[1]]
-                        raw_emg_data = 0.195*raw_emg_data
-                        # Downsample the raw data by averaging the 30 samples 
-                        # per millisecond, and assign to emg_data
-                        emg_data[i, j, k, :] = \
-                                np.mean(
-                                    raw_emg_data.reshape((-1, int(sampling_rate_ms))), 
-                                    axis = 1)
+        # Also write out README to explain CAR groups and order of emg_data for user
+        with open('emg_output/emg_data_readme.txt','w') as f:
+            f.write(f'Channels used : {emg_pathname}')
+            f.write('\n')
+            f.write('Numbers indicate "electrode_ind" in electrode_layout_frame')
 
-            # Write out booleans for non-zero trials
-            nonzero_trial = np.abs(emg_data.mean(axis=(0,3))) > 0
-
-            # Save output in emg dir
-            if not os.path.exists('emg_output'):
-                os.makedirs('emg_output')
-
-            # Save the emg_data
-            np.save('emg_output/emg_data.npy', emg_data)
-            np.save('emg_output/nonzero_trials.npy', nonzero_trial)
-
-            # Also write out README to explain CAR groups and order of emg_data for user
-            with open('emg_output/emg_data_readme.txt','w') as f:
-                f.write(f'Channels used : {emg_pathname}')
-                f.write('\n')
-                f.write('Numbers indicate "electrode_ind" in electrode_layout_frame')
-
-        else:
-            print('No EMG Data Found...NOT MAKING EMG ARRAYS')
+    else:
+        print('No EMG Data Found...NOT MAKING EMG ARRAYS')
 
     hf5.close()
 
