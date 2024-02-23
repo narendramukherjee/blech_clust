@@ -102,5 +102,4 @@ https://drive.google.com/drive/folders/1ne5SNU3Vxf74tbbWvOYbYOE1mSBkJ3u3?usp=sha
 - - [emg_freq_post_process] -> [emg_freq_plot]
 
 - **QDA (Jenn Li)**
-- - [emg_filter] -> [get_gapes_Li]
-- - [get_gapes_Li] -> [gape_classifier_plot]
+- - [emg_freq_setup] -> [get_gapes_Li]
