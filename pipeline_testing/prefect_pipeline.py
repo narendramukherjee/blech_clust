@@ -223,14 +223,6 @@ def emg_filter(data_dir):
     stdout, stderr = process.communicate()
     raise_error_if_error(process,stderr,stdout)
 
-# @task(log_prints=True)
-# def emg_local_BSA(data_dir):
-#     script_name = 'emg_local_BSA.py'
-#     process = Popen(["python", script_name, data_dir],
-#                                stdout = PIPE, stderr = PIPE)
-#     stdout, stderr = process.communicate()
-#     raise_error_if_error(process,stderr,stdout)
-
 @task(log_prints=True)
 def emg_freq_setup(data_dir):
     script_name = 'emg_freq_setup.py'
@@ -251,22 +243,6 @@ def emg_jetstream_parallel(data_dir, use_emg_env = True):
     stdout, stderr = process.communicate()
     raise_error_if_error(process,stderr,stdout)
 
-# @task(log_prints=True)
-# def get_laser_info(data_dir):
-#     script_name = 'emg_get_laser_info.py'
-#     process = Popen(["python", script_name, data_dir],
-#                                stdout = PIPE, stderr = PIPE)
-#     stdout, stderr = process.communicate()
-#     raise_error_if_error(process,stderr,stdout)
-
-# @task(log_prints=True)
-# def local_BSA_post(data_dir):
-#     script_name = 'emg_local_BSA_post_process.py'
-#     process = Popen(["python", script_name, data_dir],
-#                                stdout = PIPE, stderr = PIPE)
-#     stdout, stderr = process.communicate()
-#     raise_error_if_error(process,stderr,stdout)
-
 @task(log_prints=True)
 def emg_freq_post_process(data_dir):
     script_name = 'emg_freq_post_process.py'
@@ -274,22 +250,6 @@ def emg_freq_post_process(data_dir):
                                stdout = PIPE, stderr = PIPE)
     stdout, stderr = process.communicate()
     raise_error_if_error(process,stderr,stdout)
-
-# @task(log_prints=True)
-# def BSA_segmentation(data_dir):
-#     script_name = 'emg_BSA_segmentation.py'
-#     process = Popen(["python", script_name, data_dir],
-#                                stdout = PIPE, stderr = PIPE)
-#     stdout, stderr = process.communicate()
-#     raise_error_if_error(process,stderr,stdout)
-
-# @task(log_prints=True)
-# def BSA_segmentation_plot(data_dir):
-#     script_name = 'emg_BSA_segmentation_plot.py'
-#     process = Popen(["python", script_name, data_dir],
-#                                stdout = PIPE, stderr = PIPE)
-#     stdout, stderr = process.communicate()
-#     raise_error_if_error(process,stderr,stdout)
 
 @task(log_prints=True)
 def emg_freq_plot(data_dir):
@@ -302,14 +262,6 @@ def emg_freq_plot(data_dir):
 @task(log_prints=True)
 def run_gapes_Li(data_dir):
     script_name = 'get_gapes_Li.py'
-    process = Popen(["python", script_name, data_dir],
-                               stdout = PIPE, stderr = PIPE)
-    stdout, stderr = process.communicate()
-    raise_error_if_error(process,stderr,stdout)
-
-@task(log_prints=True)
-def run_QDA_gapes_plot(data_dir):
-    script_name = 'gape_classifier_plots.py'
     process = Popen(["python", script_name, data_dir],
                                stdout = PIPE, stderr = PIPE)
     stdout, stderr = process.communicate()
@@ -352,7 +304,7 @@ def run_emg_main_test():
     cut_emg_trials(data_dir)
     os.chdir(os.path.join(blech_clust_dir, 'emg'))
     emg_filter(data_dir)
-    # get_laser_info(data_dir)
+    emg_freq_setup(data_dir)
 
 @flow(log_prints=True)
 def run_emg_freq_test(use_BSA = 1):
@@ -360,33 +312,15 @@ def run_emg_freq_test(use_BSA = 1):
     # change_emg_freq_method needs to be in blech_clust_dir
     change_emg_freq_method(use_BSA = use_BSA)
     run_emg_main_test()
-    # emg_local_BSA(data_dir)
-    emg_freq_setup(data_dir)
     emg_jetstream_parallel(data_dir, use_emg_env = True)
-    # local_BSA_post(data_dir)
-    # BSA_segmentation(data_dir)
-    # BSA_segmentation_plot(data_dir)
     emg_freq_post_process(data_dir)
     emg_freq_plot(data_dir)
-
-# @flow(log_prints=True)
-# def run_emg_STFT_test():
-#     os.chdir(blech_clust_dir)
-#     # change_emg_freq_method needs to be in blech_clust_dir
-#     change_emg_freq_method(use_BSA = 0)
-#     run_emg_main_test()
-#     emg_local_BSA(data_dir)
-#     emg_jetstream_parallel(data_dir, use_emg_env = False)
-#     local_BSA_post(data_dir)
-#     BSA_segmentation(data_dir)
-#     BSA_segmentation_plot(data_dir)
 
 @flow(log_prints=True)
 def run_EMG_QDA_test():
     run_emg_main_test()
     os.chdir(os.path.join(blech_clust_dir, 'emg', 'gape_QDA_classifier'))
     run_gapes_Li(data_dir)
-    run_QDA_gapes_plot(data_dir)
 
 @flow(log_prints=True)
 def spike_only_test():
@@ -406,12 +340,10 @@ def emg_only_test():
     except:
         print('Failed to prep data')
     try:
-        # run_emg_BSA_test()
         run_emg_freq_test(use_BSA=1)
     except:
         print('Failed to run emg BSA test')
     try:
-        # run_emg_STFT_test()
         run_emg_freq_test(use_BSA=0)
     except:
         print('Failed to run emg STFT test')
@@ -423,21 +355,13 @@ def emg_only_test():
 @flow(log_prints=True)
 def full_test():
     try:
-        prep_data_flow()
-    except:
-        print('Failed to prep data')
-    try:
-        run_spike_test()
+        spike_only_test()
     except:
         print('Failed to run spike test')
     try:
-        run_emg_BSA_test()
+        emg_only_test()
     except:
-        print('Failed to run emg BSA test')
-    try:
-        run_EMG_QDA_test()
-    except:
-        print('Failed to run EMG QDA test')
+        print('Failed to run emg test')
 
 ############################################################
 ## Run Flows
