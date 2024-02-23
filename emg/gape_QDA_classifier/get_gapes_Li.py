@@ -148,23 +148,8 @@ if not os.path.exists(fin_plot_dir):
 # Load the required emg data (the envelope and sig_trials)
 # env = np.load('emg_env.npy')
 env = np.load('emg_output/flat_emg_env_data.npy')
-emg_env_df = pd.read_csv('emg_output/emg_env_df.csv', index_col=0)
-trial_info_frame = pd.read_csv(os.path.join(data_dir,'trial_info_frame.csv'))
 
-merge_frame = pd.merge(emg_env_df, trial_info_frame, 
-                       left_on = ['dig_in', 'trial_inds'], 
-                       right_on = ['dig_in_name_taste', 'taste_rel_trial_num'], 
-                       how = 'left')
-merge_frame.drop(
-        columns = ['dig_in','trial_inds', 
-                   'start_taste','end_taste',
-                   'start_laser','end_laser',
-                   'laser_duration','laser_lag',
-                   'start_laser_ms','end_laser_ms',
-                   'start_taste_ms','end_taste_ms',
-                   ]
-        , inplace = True)
-
+merge_frame = pd.read_csv('emg_output/emg_env_merge_df.csv')
 merge_frame['laser'] = merge_frame['laser_duration_ms'].astype(str) + \
         '_' + merge_frame['laser_lag_ms'].astype(str) 
 

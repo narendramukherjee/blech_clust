@@ -42,9 +42,6 @@ taste_names = info_dict['taste_params']['tastes']
 # Use trial count from emg_data to account for chopping down of trials
 emg_trials_frame = pd.read_csv('emg_output/emg_env_df.csv', index_col = 0)
 
-# Also get trial_info_frame
-trial_info_frame = pd.read_csv(os.path.join(dir_name,'trial_info_frame.csv'))
-
 # Load frequency analysis output
 results_path = os.path.join(dir_name, 'emg_output', 'emg_BSA_results')
 #p_files = sorted(glob.glob(os.path.join(results_path, '*_p.npy')))
@@ -59,32 +56,9 @@ omega_data = [np.load(x) for x in omega_files]
 # Get first non nan omega
 omega = [x for x in omega_data if not any(np.isnan(x))][0]
 
-# # Convert p_data to 1d
-# p_inds = np.where(p_data)
-# p_flat = np.zeros(p_data.shape[:2])
-# for this_iter in zip(*p_inds):
-#     p_flat[this_iter[:2]] = omega[this_iter[-1]]
-
 # Write out p_flat and omega to disk
 # np.save(os.path.join('emg_output', 'p_flat.npy'), p_flat)
 np.save(os.path.join('emg_output', 'omega.npy'), omega)
-
-merge_frame = pd.merge(emg_trials_frame, trial_info_frame, 
-                       left_on = ['dig_in', 'trial_inds'], 
-                       right_on = ['dig_in_name_taste', 'taste_rel_trial_num'], 
-                       how = 'left')
-merge_frame.drop(
-        columns = ['dig_in','trial_inds', 
-                   'start_taste','end_taste',
-                   'start_laser','end_laser',
-                   'laser_duration','laser_lag',
-                   'start_laser_ms','end_laser_ms',
-                   'start_taste_ms','end_taste_ms',
-                   ]
-        , inplace = True)
-
-# Write out merge frame
-merge_frame.to_csv('emg_output/emg_env_merge_df.csv')
 
 ############################################################
 # ## Create gape and ltp arrays

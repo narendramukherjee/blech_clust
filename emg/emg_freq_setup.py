@@ -15,6 +15,7 @@ from glob import glob
 import json
 import tables
 import pandas as pd
+import pylab as plt
 
 sys.path.append('..')
 from utils.blech_utils import imp_metadata
@@ -29,6 +30,14 @@ print(f'Processing : {data_dir}')
 ##############################
 # Setup params
 ##############################
+params_dict = metadata_handler.params_dict
+durations = params_dict['spike_array_durations']
+pre_stim = int(durations[0])
+plot_params = params_dict['psth_params']['durations']
+
+fin_inds = [pre_stim - plot_params[0], pre_stim + plot_params[1]]
+time_vec = np.arange(-plot_params[0], plot_params[1])
+
 # Get paths
 this_path_handler = path_handler()
 blech_clust_dir = this_path_handler.blech_clust_dir
@@ -55,14 +64,19 @@ dig_in_nodes = hf5.list_nodes('/emg_data')
 dig_in_nodes = [x for x in dig_in_nodes if 'dig_in' in x._v_name]
 emg_env_node_names = []
 emg_env_data = []
+emg_filt_data = []
 for node in dig_in_nodes:
     node_list = hf5.list_nodes(
             os.path.join(node._v_pathname, 'processed_emg'),
                                classname='Array')
-    node_list = [x for x in node_list if 'emg_env' in x._v_name]
-    dat_list = [x.read() for x in node_list]
-    emg_env_data.extend(dat_list)
-    emg_env_node_names.extend([x._v_pathname for x in node_list])
+    env_node_list = [x for x in node_list if 'emg_env' in x._v_name]
+    env_dat_list = [x.read() for x in env_node_list]
+    emg_env_data.extend(env_dat_list)
+    emg_env_node_names.extend([x._v_pathname for x in env_node_list])
+
+    filt_node_list = [x for x in node_list if 'emg_filt' in x._v_name]
+    filt_dat_list = [x.read() for x in filt_node_list]
+    emg_filt_data.extend(filt_dat_list)
 
 hf5.close()
 
@@ -80,6 +94,9 @@ trial_inds = [item for sublist in trial_inds for item in sublist]
 flat_emg_env_data = np.stack(
         [item for sublist in emg_env_data for item in sublist]
          )
+flat_emg_filt_data = np.stack(
+        [item for sublist in emg_filt_data for item in sublist]
+        )
 
 emg_env_df = pd.DataFrame(
         dict(
@@ -91,6 +108,10 @@ emg_env_df = pd.DataFrame(
 
 
 emg_output_dir = os.path.join(data_dir, 'emg_output')
+plot_dir = os.path.join(emg_output_dir, 'plots')
+if not os.path.exists(plot_dir):
+    os.makedirs(plot_dir)
+
 print(f'emg_output_dir: {emg_output_dir}')
 os.chdir(emg_output_dir)  
 
@@ -141,3 +162,73 @@ f.close()
 f = open(os.path.join(blech_emg_dir,'BSA_run.dir'), 'w')
 print(data_dir, file = f)
 f.close()
+
+############################################################
+# Merge the emg_env_df with trial_info_df
+############################################################
+# Also get trial_info_frame
+trial_info_frame = pd.read_csv(os.path.join(data_dir,'trial_info_frame.csv'))
+
+merge_frame = pd.merge(emg_env_df, trial_info_frame, 
+                       left_on = ['dig_in', 'trial_inds'], 
+                       right_on = ['dig_in_name_taste', 'taste_rel_trial_num'], 
+                       how = 'left')
+merge_frame.drop(
+        columns = ['dig_in','trial_inds', 
+                   'start_taste','end_taste',
+                   'start_laser','end_laser',
+                   'laser_duration','laser_lag',
+                   'start_laser_ms','end_laser_ms',
+                   'start_taste_ms','end_taste_ms',
+                   ]
+        , inplace = True)
+
+# Write out merge frame
+merge_frame.to_csv(os.path.join(data_dir, 'emg_output/emg_env_merge_df.csv'))
+
+############################################################
+# Plots
+############################################################
+# Plot env using flat_emg_env and emg_env_merge_df
+
+car_group = list(merge_frame.groupby('car'))
+
+max_trials = merge_frame.taste_rel_trial_num.max() + 1 
+
+for car_name, car_data in car_group:
+    n_digs = car_data.dig_in_num_taste.nunique()
+    fig, ax = plt.subplots(max_trials, n_digs, 
+                           sharex = True, sharey = True,
+                           figsize = (n_digs*4, max_trials)
+                           )
+    for i, (dig_name, dig_data) in enumerate(car_data.groupby('dig_in_name_taste')):
+        ax[0, i].set_title(dig_name)
+        dat_inds = dig_data.index.values
+        dig_filt = flat_emg_env_data[dat_inds][:, fin_inds[0]:fin_inds[1]] 
+        for j, trial in enumerate(dig_filt):
+            ax[j, i].plot(time_vec, trial)
+            ax[j, i].axvline(0, color = 'r', linestyle = '--')
+    fig.suptitle(f'{car_name} EMG Filt')
+    plt.tight_layout()
+    plt.savefig(os.path.join(plot_dir, f'{car_name}_emg_env.png'),
+            bbox_inches = 'tight')
+    plt.close()
+
+for car_name, car_data in car_group:
+    n_digs = car_data.dig_in_num_taste.nunique()
+    fig, ax = plt.subplots(max_trials, n_digs, 
+                           sharex = True, sharey = True,
+                           figsize = (n_digs*4, max_trials)
+                           )
+    for i, (dig_name, dig_data) in enumerate(car_data.groupby('dig_in_name_taste')):
+        ax[0, i].set_title(dig_name)
+        dat_inds = dig_data.index.values
+        dig_filt = flat_emg_filt_data[dat_inds][:, fin_inds[0]:fin_inds[1]] 
+        for j, trial in enumerate(dig_filt):
+            ax[j, i].plot(time_vec, trial)
+            ax[j, i].axvline(0, color = 'r', linestyle = '--')
+    fig.suptitle(f'{car_name} EMG Filt')
+    plt.tight_layout()
+    plt.savefig(os.path.join(plot_dir, f'{car_name}_emg_filt.png'),
+                bbox_inches = 'tight')
+    plt.close()

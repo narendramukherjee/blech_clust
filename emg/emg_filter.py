@@ -150,8 +150,6 @@ for i, this_row in ind_frame.iterrows():
     # If any of the channels passes the criteria, select that trial as significant
     # 1) mean post-stim activity > mean pre-stim activity
     # 2) max post-stim activity > mean pre-stim activity + 4*pre-stim STD
-    #mean_bool = np.sum(post_m > pre_m, axis = 0) > 0
-    #std_bool = np.sum(post_max > (pre_m + 4.0*pre_s), axis = 0) > 0
     mean_bool = post_m > pre_m
     std_bool = post_max > (pre_m + 4.0*pre_s)
 
@@ -161,7 +159,6 @@ for i, this_row in ind_frame.iterrows():
 
 ind_frame['sig_trials'] = sig_trials_list
 
-# NOTE: Currently DIFFERENT sig_trials for each channel 
 # Save the highpass filtered signal, 
 # the envelope and the indicator of significant trials as a np array
 # Iterate over channels and save them in different directories 
@@ -174,19 +171,14 @@ with tables.open_file(metadata_handler.hdf5_name, 'r+') as hf5:
             hf5.remove_node(f'{digin_path}/processed_emg', recursive = True)
         hf5.create_group(f'{digin_path}', 'processed_emg')
         for car_ind , this_car_name in enumerate(emg_car_names): 
-            # emg_filt (output shape): tastes x trials x time
-            # np.save(os.path.join(dir_path, f'emg_filt.npy'), emg_filt_list[num])
             hf5.create_array(
                     f'{digin_path}/processed_emg', 
                     f'{this_car_name}_emg_filt', 
                     emg_filt_list[car_ind][digin_ind]
                     )
-            # env (output shape): tastes x trials x time
-            # np.save(os.path.join(dir_path, f'emg_env.npy'), emg_env_list[num])
             hf5.create_array(
                     f'{digin_path}/processed_emg',
                     f'{this_car_name}_emg_env',
                     emg_env_list[car_ind][digin_ind]
                     )
-            # sig_trials (output shape): tastes x trials
-            # np.save(os.path.join(dir_path, 'sig_trials.npy'), sig_trials_list[num])
+
